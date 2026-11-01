@@ -6,10 +6,14 @@
 		"./scripts/**/*.ts",
 	],
 	"compilerOptions": {
+		"paths": {
+			"#/*": ["./src/*"],
+		},
 		"lib": ["esnext"],
 		"types": ["node"],
 		"target": "esnext",
 		"module": "esnext",
+		"moduleResolution": "bundler",
 		"moduleDetection": "force",
 		"strict": true,
 		"isolatedModules": true,

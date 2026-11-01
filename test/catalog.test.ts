@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { deriveModel, deriveProviderModels } from '../src/catalog/derive.ts';
-import { resolveProtocol } from '../src/catalog/protocol.ts';
-import { deriveReasoning, reasoningChoices } from '../src/catalog/reasoning.ts';
-import type { CatalogModel, CatalogProvider } from '../src/catalog/types.ts';
+import { deriveModel, deriveProviderModels } from '#/catalog/derive.ts';
+import { resolveProtocol } from '#/catalog/protocol.ts';
+import { deriveReasoning, reasoningChoices } from '#/catalog/reasoning.ts';
+import type { CatalogModel, CatalogProvider } from '#/catalog/types.ts';
 
 function model(overrides: Partial<CatalogModel> = {}): CatalogModel {
 	return { id: 'm', name: 'M', limit: { context: 1_000, output: 100 }, ...overrides };

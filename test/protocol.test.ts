@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { adapterFor } from '../src/protocol/index.ts';
-import { createSseParser } from '../src/protocol/sse.ts';
-import type { BuildInput, NeutralEvent, ProtocolAdapter, SseEvent } from '../src/protocol/types.ts';
+import { adapterFor } from '#/protocol/index.ts';
+import { createSseParser } from '#/protocol/sse.ts';
+import type { BuildInput, NeutralEvent, ProtocolAdapter, SseEvent } from '#/protocol/types.ts';
 
 function input(overrides: Partial<BuildInput> = {}): BuildInput {
 	return {

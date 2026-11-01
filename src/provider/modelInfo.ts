@@ -1,8 +1,8 @@
 import type * as vscode from 'vscode';
 
-import type { NeutralModel } from '../catalog/derive.ts';
-import type { EffortChoice, ReasoningProfile } from '../catalog/reasoning.ts';
-import { reasoningChoices } from '../catalog/reasoning.ts';
+import type { NeutralModel } from '#/catalog/derive.ts';
+import type { EffortChoice, ReasoningProfile } from '#/catalog/reasoning.ts';
+import { reasoningChoices } from '#/catalog/reasoning.ts';
 
 /**
  * Fields the language model provider API accepts but that the published typings do not yet declare,

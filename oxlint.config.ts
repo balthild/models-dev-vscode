@@ -6,11 +6,8 @@ export default defineConfig({
 		typeAware: true,
 	},
 	rules: {
-		// Relative imports carry an explicit `.ts` extension so the sources run
-		// unbuilt under `node --test`, which does no extension resolution. Both
-		// rules below assume extension-less specifiers, so they cannot apply.
-		'import/extensions': 'off',
-		'import/no-relative-parent-imports': 'off',
+		'import/extensions': ['error', 'ignorePackages'],
+		'import/no-relative-parent-imports': 'warn',
 		'import/consistent-type-specifier-style': 'warn',
 		'unicorn/prefer-node-protocol': 'warn',
 		'typescript/no-redundant-type-constituents': 'off',
@@ -19,8 +16,6 @@ export default defineConfig({
 		{
 			files: ['test/**'],
 			rules: {
-				// `node:test` registers cases by calling `test()`, and the runner owns
-				// the promise that call returns.
 				'typescript/no-floating-promises': 'off',
 			},
 		},

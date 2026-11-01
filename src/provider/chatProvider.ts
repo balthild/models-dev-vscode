@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 
-import type { NeutralModel } from '../catalog/derive.ts';
-import type { EffortChoice } from '../catalog/reasoning.ts';
-import type { NeutralEvent, ProtocolRequest, StreamDecoder } from '../protocol/index.ts';
-import { adapterFor, createSseParser } from '../protocol/index.ts';
+import type { NeutralModel } from '#/catalog/derive.ts';
+import type { EffortChoice } from '#/catalog/reasoning.ts';
+import type { NeutralEvent, ProtocolRequest, StreamDecoder } from '#/protocol/index.ts';
+import { adapterFor, createSseParser } from '#/protocol/index.ts';
+
 import { toModelInformation } from './modelInfo.ts';
 import { requiresToolCall, toNeutralMessages, toNeutralTools } from './request.ts';
 import { countTokens } from './tokenCount.ts';

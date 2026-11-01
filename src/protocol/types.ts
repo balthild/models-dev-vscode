@@ -1,5 +1,5 @@
-import type { ProtocolId } from '../catalog/protocol.ts';
-import type { EffortChoice } from '../catalog/reasoning.ts';
+import type { ProtocolId } from '#/catalog/protocol.ts';
+import type { EffortChoice } from '#/catalog/reasoning.ts';
 
 /** An image attached to a turn. */
 export interface NeutralImage {

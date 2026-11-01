@@ -6,7 +6,7 @@ import type {
 	NeutralTool,
 	NeutralToolCall,
 	NeutralToolResult,
-} from '../protocol/index.ts';
+} from '#/protocol/index.ts';
 
 /** Convert the host's request messages into the protocol-neutral form. */
 export function toNeutralMessages(

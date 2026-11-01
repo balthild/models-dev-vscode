@@ -15,8 +15,8 @@ import {
 	DEFAULT_ENABLED_PROVIDERS,
 	HARD_DISABLED_PROVIDERS,
 	SHIPPED_PROVIDERS,
-} from '../src/catalog/providers.ts';
-import type { Catalog } from '../src/catalog/types.ts';
+} from '#/catalog/providers.ts';
+import type { Catalog } from '#/catalog/types.ts';
 
 const PACKAGE_PATH = fileURLToPath(new URL('../package.json', import.meta.url));
 const SNAPSHOT_PATH = fileURLToPath(new URL('../assets/catalog.snapshot.json', import.meta.url));

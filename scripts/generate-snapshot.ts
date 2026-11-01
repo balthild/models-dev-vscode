@@ -11,9 +11,9 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { parseCatalog } from '../src/catalog/project.ts';
-import { HARD_DISABLED_PROVIDERS, SHIPPED_PROVIDERS } from '../src/catalog/providers.ts';
-import type { CatalogProvider } from '../src/catalog/types.ts';
+import { parseCatalog } from '#/catalog/project.ts';
+import { HARD_DISABLED_PROVIDERS, SHIPPED_PROVIDERS } from '#/catalog/providers.ts';
+import type { CatalogProvider } from '#/catalog/types.ts';
 
 const CATALOG_URL = 'https://models.dev/api.json';
 const OUTPUT = fileURLToPath(new URL('../assets/catalog.snapshot.json', import.meta.url));

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import type { NeutralModel } from '../src/catalog/derive.ts';
-import { deriveReasoning } from '../src/catalog/reasoning.ts';
-import { toModelInformation } from '../src/provider/modelInfo.ts';
+import type { NeutralModel } from '#/catalog/derive.ts';
+import { deriveReasoning } from '#/catalog/reasoning.ts';
+import { toModelInformation } from '#/provider/modelInfo.ts';
 
 function model(overrides: Partial<NeutralModel> = {}): NeutralModel {
 	return {

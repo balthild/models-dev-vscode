@@ -1,4 +1,5 @@
-import type { ProtocolId } from '../catalog/protocol.ts';
+import type { ProtocolId } from '#/catalog/protocol.ts';
+
 import { chatCompletionsAdapter } from './chatCompletions.ts';
 import { messagesAdapter } from './messages.ts';
 import { responsesAdapter } from './responses.ts';

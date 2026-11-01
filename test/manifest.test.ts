@@ -7,8 +7,8 @@ import {
 	HARD_DISABLED_PROVIDERS,
 	isShippedProvider,
 	SHIPPED_PROVIDERS,
-} from '../src/catalog/providers.ts';
-import type { Catalog } from '../src/catalog/types.ts';
+} from '#/catalog/providers.ts';
+import type { Catalog } from '#/catalog/types.ts';
 
 const SNAPSHOT = new URL('../assets/catalog.snapshot.json', import.meta.url);
 

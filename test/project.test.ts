@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { parseCatalog } from '../src/catalog/project.ts';
+import { parseCatalog } from '#/catalog/project.ts';
 
 const PAYLOAD = JSON.stringify({
 	example: {

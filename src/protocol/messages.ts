@@ -1,4 +1,5 @@
-import type { NamedEffort } from '../catalog/reasoning.ts';
+import type { NamedEffort } from '#/catalog/reasoning.ts';
+
 import type {
 	BuildInput,
 	NeutralEvent,

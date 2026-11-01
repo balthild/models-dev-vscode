@@ -5,8 +5,8 @@ import { dirname, join } from 'node:path';
 import type { TestContext } from 'node:test';
 import { describe, test } from 'node:test';
 
-import type { CatalogStoreOptions } from '../src/catalog/store.ts';
-import { CatalogStore } from '../src/catalog/store.ts';
+import type { CatalogStoreOptions } from '#/catalog/store.ts';
+import { CatalogStore } from '#/catalog/store.ts';
 
 function payload(name: string): string {
 	return JSON.stringify({

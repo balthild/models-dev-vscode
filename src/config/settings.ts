@@ -4,7 +4,7 @@ import {
 	DEFAULT_ENABLED_PROVIDERS,
 	HARD_DISABLED_PROVIDERS,
 	isShippedProvider,
-} from '../catalog/providers.ts';
+} from '#/catalog/providers.ts';
 
 const SECTION = 'modelsdev';
 const PROVIDERS_KEY = 'providers';

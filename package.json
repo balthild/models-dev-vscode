@@ -11,6 +11,9 @@
 	"license": "GPL-3.0-only",
 	"publisher": "balthild",
 	"type": "module",
+	"imports": {
+		"#/*": "./src/*"
+	},
 	"main": "./dist/extension.js",
 	"files": [
 		"./dist",
@@ -633,9 +636,11 @@
 		"@types/node": "^24.19.2",
 		"@types/vscode": "^1.140.0",
 		"@vscode/dts": "^0.4.1",
+		"@vscode/vsce": "^4.1.0",
 		"dprint": "^0.63.0",
 		"oxlint": "^1.88.0",
 		"oxlint-tsgolint": "^7.0.2004",
+		"release-it": "^21.1.2",
 		"rolldown": "^1.2.14",
 		"typescript": "^7.0.2"
 	},

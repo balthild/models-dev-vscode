@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 
-import type { NeutralModel } from '../catalog/derive.ts';
-import { deriveProviderModels } from '../catalog/derive.ts';
-import { SHIPPED_PROVIDERS } from '../catalog/providers.ts';
-import type { CatalogStore } from '../catalog/store.ts';
+import type { NeutralModel } from '#/catalog/derive.ts';
+import { deriveProviderModels } from '#/catalog/derive.ts';
+import { SHIPPED_PROVIDERS } from '#/catalog/providers.ts';
+import type { CatalogStore } from '#/catalog/store.ts';
+
 import { CatalogChatProvider } from './chatProvider.ts';
 
 /**
