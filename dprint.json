@@ -1,6 +1,7 @@
 {
 	"excludes": [
 		"*.lock",
+		"assets/catalog.snapshot.json",
 	],
 	"useTabs": true,
 	"indentWidth": 2,

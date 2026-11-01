@@ -105,7 +105,8 @@ export interface CatalogProvider {
 	readonly models: Record<string, CatalogModel>;
 }
 
-/** The subset of `catalog.json` this extension consumes. */
-export interface Catalog {
-	readonly providers: Record<string, CatalogProvider>;
-}
+/**
+ * A catalog payload: every provider keyed by its id. The live `api.json` and the bundled snapshot
+ * share this shape, so one parser serves both.
+ */
+export type Catalog = Readonly<Record<string, CatalogProvider>>;
