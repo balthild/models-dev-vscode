@@ -22,6 +22,7 @@
 		"watch": "rolldown -c --watch",
 		"clean": "rm -rf ./dist",
 		"check": "tsc -p . && run fmt:check",
+		"test": "node --test 'test/**/*.test.ts'",
 		"lint": "oxlint",
 		"lint:fix": "oxlint --fix",
 		"fmt": "dprint fmt",
