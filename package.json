@@ -32,7 +32,8 @@
 		"fmt": "dprint fmt",
 		"fmt:check": "dprint check --list-different || echo Some files are not formatted.",
 		"vscode:prepublish": "run check && run lint && run clean && run build:prod",
-		"package": "npx @vscode/vsce package -o extension.vsix"
+		"release": "release-it",
+		"package": "vsce package"
 	},
 	"contributes": {
 		"languageModelChatProviders": [
