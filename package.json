@@ -25,6 +25,7 @@
 		"check": "tsc -p . && run fmt:check",
 		"test": "node --test 'test/**/*.test.ts'",
 		"snapshot": "node scripts/generate-snapshot.ts",
+		"manifest": "node scripts/generate-manifest.ts",
 		"lint": "oxlint",
 		"lint:fix": "oxlint --fix",
 		"fmt": "dprint fmt",

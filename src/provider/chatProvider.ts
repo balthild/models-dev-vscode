@@ -13,10 +13,6 @@ export interface ChatProviderOptions {
 	readonly vendor: string;
 	/** Models currently served for this vendor. */
 	models(): readonly NeutralModel[];
-	/** The API key the user configured, if any. */
-	apiKey(): string | undefined;
-	/** An endpoint that overrides the catalog's, for users behind a gateway. */
-	baseUrl(): string | undefined;
 	readonly log: vscode.LogOutputChannel;
 }
 
@@ -24,11 +20,20 @@ export interface ChatProviderOptions {
  * Serves one catalog provider's models to the host.
  *
  * Credentials arrive from the provider's `configuration` contribution, which the host prompts for
- * and stores; this class never asks for them itself.
+ * and stores; nothing here asks for them itself.
  */
 export class CatalogChatProvider implements vscode.LanguageModelChatProvider, vscode.Disposable {
 	private readonly options: ChatProviderOptions;
 	private readonly changes = new vscode.EventEmitter<void>();
+
+	/**
+	 * The options the host resolved from the manifest's `configuration` schema, which is where the
+	 * API key lives.
+	 *
+	 * Only {@link provideLanguageModelChatInformation} receives them, so they are cached here for the
+	 * requests that follow.
+	 */
+	private configuration: Readonly<Record<string, unknown>> | undefined;
 
 	/**
 	 * The host only re-reads a provider's models after this event fires, so it has to be present for
@@ -49,7 +54,16 @@ export class CatalogChatProvider implements vscode.LanguageModelChatProvider, vs
 		this.changes.fire();
 	}
 
-	provideLanguageModelChatInformation(): vscode.LanguageModelChatInformation[] {
+	provideLanguageModelChatInformation(
+		options: vscode.PrepareLanguageModelChatModelOptions,
+	): vscode.LanguageModelChatInformation[] {
+		// Declared in the proposed chatProvider API, so it is read defensively.
+		const configuration = (options as { configuration?: Readonly<Record<string, unknown>> })
+			.configuration;
+		if (configuration !== undefined) {
+			this.configuration = configuration;
+		}
+
 		return this.options.models().map(toModelInformation);
 	}
 
@@ -65,17 +79,17 @@ export class CatalogChatProvider implements vscode.LanguageModelChatProvider, vs
 			throw new Error(`This model is no longer offered by ${this.options.vendor}.`);
 		}
 
-		const apiKey = this.options.apiKey();
-		if (apiKey === undefined || apiKey === '') {
+		const apiKey = readSetting(this.configuration, 'apiKey');
+		if (apiKey === undefined) {
 			throw new Error(
-				`No API key is configured for ${this.options.vendor}. Add one from the model picker, or run "Models.dev: Open provider settings".`,
+				`No API key is configured for ${this.options.vendor}. Add one from the model picker, or run "Models.dev: Open Provider Settings".`,
 			);
 		}
 
 		const adapter = adapterFor(neutral.protocol);
 		const request = adapter.buildRequest({
 			modelId: neutral.id,
-			baseUrl: this.options.baseUrl() ?? neutral.baseUrl,
+			baseUrl: readSetting(this.configuration, 'baseUrl') ?? neutral.baseUrl,
 			apiKey,
 			messages: toNeutralMessages(messages),
 			tools: toNeutralTools(options.tools),
@@ -84,7 +98,7 @@ export class CatalogChatProvider implements vscode.LanguageModelChatProvider, vs
 			reasoning: { choice: readEffort(options), budget: neutral.reasoning.budget },
 		});
 
-		await stream(() => this.options.log, request, adapter.startStream(), progress, token);
+		await stream(this.options.log, request, adapter.startStream(), progress, token);
 	}
 
 	async provideTokenCount(
@@ -96,7 +110,7 @@ export class CatalogChatProvider implements vscode.LanguageModelChatProvider, vs
 }
 
 async function stream(
-	log: () => vscode.LogOutputChannel,
+	log: vscode.LogOutputChannel,
 	request: ProtocolRequest,
 	decoder: StreamDecoder,
 	progress: vscode.Progress<vscode.LanguageModelResponsePart>,
@@ -139,13 +153,6 @@ async function stream(
 		}
 
 		report(decoder.flush(), progress, log);
-	} catch (error) {
-		if (controller.signal.aborted && !token.isCancellationRequested) {
-			// The abort came from our own timeout rather than from the user.
-			throw new Error('The provider stopped responding.');
-		}
-
-		throw error;
 	} finally {
 		cancellation.dispose();
 	}
@@ -154,7 +161,7 @@ async function stream(
 function report(
 	events: readonly NeutralEvent[],
 	progress: vscode.Progress<vscode.LanguageModelResponsePart>,
-	log: () => vscode.LogOutputChannel,
+	log: vscode.LogOutputChannel,
 ): void {
 	for (const event of events) {
 		switch (event.kind) {
@@ -206,7 +213,7 @@ function report(
  */
 function createThinkingPart(
 	text: string,
-	log: () => vscode.LogOutputChannel,
+	log: vscode.LogOutputChannel,
 ): vscode.LanguageModelResponsePart | undefined {
 	const constructor = (
 		vscode as unknown as {
@@ -221,7 +228,7 @@ function createThinkingPart(
 	try {
 		return new constructor(text) as vscode.LanguageModelResponsePart;
 	} catch (error) {
-		log().warn(`Could not report reasoning: ${String(error)}`);
+		log.warn(`Could not report reasoning: ${String(error)}`);
 
 		return undefined;
 	}
@@ -230,8 +237,8 @@ function createThinkingPart(
 /**
  * The effort the user picked in the model picker.
  *
- * The per-model configuration is declared in the proposed `chatProvider` API, so it is read
- * defensively and falls back to the older free-form options bag.
+ * Per-model configuration is declared in the proposed `chatProvider` API, so it is read defensively
+ * and falls back to the older free-form options bag.
  */
 function readEffort(
 	options: vscode.ProvideLanguageModelChatResponseOptions,
@@ -241,6 +248,16 @@ function readEffort(
 		proposed.modelConfiguration?.reasoningEffort ?? options.modelOptions?.reasoningEffort;
 
 	return typeof chosen === 'string' ? (chosen as EffortChoice) : undefined;
+}
+
+/** Read a non-empty string out of the host-resolved provider configuration. */
+function readSetting(
+	configuration: Readonly<Record<string, unknown>> | undefined,
+	key: string,
+): string | undefined {
+	const value = configuration?.[key];
+
+	return typeof value === 'string' && value !== '' ? value : undefined;
 }
 
 function parseInput(argumentsText: string): object {
