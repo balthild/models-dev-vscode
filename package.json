@@ -1,0 +1,48 @@
+{
+	"name": "models-dev-vscode",
+	"displayName": "Models.dev",
+	"version": "0.0.1",
+	"private": true,
+	"description": "Models.dev as copilot model providers",
+	"categories": [
+		"AI",
+		"Other"
+	],
+	"license": "GPL-3.0-only",
+	"publisher": "balthild",
+	"type": "module",
+	"main": "./dist/extension.js",
+	"files": [
+		"./dist",
+		"README.md"
+	],
+	"scripts": {
+		"build": "rolldown -c",
+		"build:prod": "rolldown -c --minify",
+		"watch": "rolldown -c --watch",
+		"clean": "rm -rf ./dist",
+		"check": "tsc -p . && run fmt:check",
+		"lint": "oxlint",
+		"lint:fix": "oxlint --fix",
+		"fmt": "dprint fmt",
+		"fmt:check": "dprint check --list-different || echo Some files are not formatted.",
+		"vscode:prepublish": "run check && run lint && run clean && run build:prod",
+		"package": "npx @vscode/vsce package -o extension.vsix"
+	},
+	"contributes": {},
+	"devDependencies": {
+		"@oxlint/plugins": "^1.88.0",
+		"@types/node": "^24.19.2",
+		"@types/vscode": "^1.140.0",
+		"@vscode/dts": "^0.4.1",
+		"dprint": "^0.63.0",
+		"oxlint": "^1.88.0",
+		"oxlint-tsgolint": "^7.0.2004",
+		"rolldown": "^1.2.14",
+		"typescript": "^7.0.2"
+	},
+	"packageManager": "yarn@4.18.1",
+	"engines": {
+		"vscode": "^1.142.0"
+	}
+}

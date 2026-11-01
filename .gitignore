@@ -1,0 +1,18 @@
+node_modules
+
+# Yarn
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+
+# Output
+dist/
+*.vsix
+
+# OS
+.DS_Store
+Thumbs.db

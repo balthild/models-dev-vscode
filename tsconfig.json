@@ -1,0 +1,21 @@
+{
+	"include": [
+		"./*.config.ts",
+		"./src/**/*.ts",
+	],
+	"compilerOptions": {
+		"paths": {
+			"#/*": ["./src/*"],
+		},
+		"lib": ["esnext"],
+		"types": ["node"],
+		"target": "esnext",
+		"module": "esnext",
+		"moduleDetection": "force",
+		"strict": true,
+		"isolatedModules": true,
+		"verbatimModuleSyntax": true,
+		"skipLibCheck": true,
+		"noEmit": true,
+	},
+}
