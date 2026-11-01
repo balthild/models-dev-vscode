@@ -10,7 +10,9 @@ function input(overrides: Partial<BuildInput> = {}): BuildInput {
 		modelId: 'model',
 		baseUrl: 'https://example.test/v1',
 		apiKey: 'secret',
-		messages: [{ role: 'user', text: 'hi', images: [], toolCalls: [], toolResults: [] }],
+		messages: [
+			{ role: 'user', text: 'hi', images: [], toolCalls: [], toolResults: [], reasoning: [] },
+		],
 		tools: [],
 		requireToolCall: false,
 		maxOutputTokens: 1_000,
@@ -154,6 +156,7 @@ describe('chatCompletions', () => {
 				images: [{ data: new Uint8Array([1, 2]), mimeType: 'image/png' }],
 				toolCalls: [],
 				toolResults: [],
+				reasoning: [],
 			},
 		];
 		const { json } = request('chatCompletions', { messages });
@@ -172,6 +175,7 @@ describe('chatCompletions', () => {
 				images: [],
 				toolCalls: [{ callId: 'call_1', name: 'read', arguments: '{"path":"a"}' }],
 				toolResults: [{ callId: 'call_1', text: 'contents', images: [] }],
+				reasoning: [],
 			},
 		];
 		const { json } = request('chatCompletions', { messages });
@@ -249,8 +253,22 @@ describe('messages', () => {
 
 	test('merges consecutive turns of one role', () => {
 		const messages = [
-			{ role: 'user' as const, text: 'one', images: [], toolCalls: [], toolResults: [] },
-			{ role: 'user' as const, text: 'two', images: [], toolCalls: [], toolResults: [] },
+			{
+				role: 'user' as const,
+				text: 'one',
+				images: [],
+				toolCalls: [],
+				toolResults: [],
+				reasoning: [],
+			},
+			{
+				role: 'user' as const,
+				text: 'two',
+				images: [],
+				toolCalls: [],
+				toolResults: [],
+				reasoning: [],
+			},
 		];
 		const { json } = request('messages', { messages });
 
@@ -269,6 +287,7 @@ describe('messages', () => {
 				images: [],
 				toolCalls: [{ callId: 'toolu_1', name: 'read', arguments: '{"path":"a"}' }],
 				toolResults: [{ callId: 'toolu_1', text: 'contents', images: [] }],
+				reasoning: [],
 			},
 		];
 		const { json } = request('messages', { messages });
@@ -351,6 +370,82 @@ describe('messages', () => {
 		);
 		assert.deepEqual(events.at(-1), { kind: 'usage', inputTokens: 9, outputTokens: 4 });
 	});
+
+	test('replays a signed thinking block ahead of the reply', () => {
+		const messages = [
+			{
+				role: 'assistant' as const,
+				text: 'answer',
+				images: [],
+				toolCalls: [],
+				toolResults: [],
+				reasoning: [{ text: 'weighing', signature: 'sig' }],
+			},
+		];
+		const { json } = request('messages', { messages });
+
+		assert.deepEqual(json.messages[0].content, [
+			{ type: 'thinking', thinking: 'weighing', signature: 'sig' },
+			{ type: 'text', text: 'answer' },
+		]);
+	});
+
+	test('replays a withheld thinking block in place of its text', () => {
+		const messages = [
+			{
+				role: 'assistant' as const,
+				text: '',
+				images: [],
+				toolCalls: [],
+				toolResults: [],
+				reasoning: [{ text: '', redacted: 'opaque' }],
+			},
+		];
+		const { json } = request('messages', { messages });
+
+		assert.deepEqual(json.messages[0].content, [{ type: 'redacted_thinking', data: 'opaque' }]);
+	});
+
+	test('reports a signed thinking block so the next turn can replay it', () => {
+		const events = decode('messages', [
+			{ type: 'content_block_start', index: 0, content_block: { type: 'thinking' } },
+			{
+				type: 'content_block_delta',
+				index: 0,
+				delta: { type: 'thinking_delta', thinking: 'weigh' },
+			},
+			{ type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'ing' } },
+			{
+				type: 'content_block_delta',
+				index: 0,
+				delta: { type: 'signature_delta', signature: 'sig' },
+			},
+			{ type: 'content_block_stop', index: 0 },
+		]);
+
+		assert.equal(textOf(events, 'thinking'), 'weighing');
+		assert.deepEqual(
+			events.filter((event) => event.kind === 'thinkingState'),
+			[{ kind: 'thinkingState', text: 'weighing', signature: 'sig' }],
+		);
+	});
+
+	test('leaves an unsigned thinking block out of the state', () => {
+		const events = decode('messages', [
+			{ type: 'content_block_start', index: 0, content_block: { type: 'thinking' } },
+			{
+				type: 'content_block_delta',
+				index: 0,
+				delta: { type: 'thinking_delta', thinking: 'guess' },
+			},
+			{ type: 'content_block_stop', index: 0 },
+		]);
+
+		assert.equal(
+			events.some((event) => event.kind === 'thinkingState'),
+			false,
+		);
+	});
 });
 
 describe('responses', () => {
@@ -371,6 +466,7 @@ describe('responses', () => {
 				images: [],
 				toolCalls: [{ callId: 'call_1', name: 'read', arguments: '{"path":"a"}' }],
 				toolResults: [{ callId: 'call_1', text: 'contents', images: [] }],
+				reasoning: [],
 			},
 		];
 		const { json } = request('responses', { messages });
@@ -424,5 +520,52 @@ describe('responses', () => {
 			},
 		);
 		assert.deepEqual(events.at(-1), { kind: 'usage', inputTokens: 5, outputTokens: 2 });
+	});
+
+	test('replays an encrypted reasoning item ahead of the reply', () => {
+		const messages = [
+			{
+				role: 'assistant' as const,
+				text: 'answer',
+				images: [],
+				toolCalls: [],
+				toolResults: [],
+				reasoning: [{ id: 'rs_1', text: 'considered', signature: 'opaque' }],
+			},
+		];
+		const { json } = request('responses', { messages });
+
+		assert.deepEqual(json.input[0], {
+			type: 'reasoning',
+			id: 'rs_1',
+			encrypted_content: 'opaque',
+			summary: [],
+		});
+		assert.equal(json.input[1].type, 'message');
+	});
+
+	test('reports an encrypted reasoning item for replay', () => {
+		const events = decode('responses', [
+			{ type: 'response.reasoning_summary_text.delta', item_id: 'rs_1', delta: 'considered ' },
+			{ type: 'response.reasoning_summary_text.delta', item_id: 'rs_1', delta: 'options' },
+			{
+				type: 'response.output_item.done',
+				item: { type: 'reasoning', id: 'rs_1', encrypted_content: 'opaque' },
+			},
+		]);
+
+		assert.equal(textOf(events, 'thinking'), 'considered options');
+		assert.deepEqual(
+			events.filter((event) => event.kind === 'thinkingState'),
+			[{ kind: 'thinkingState', id: 'rs_1', text: 'considered options', signature: 'opaque' }],
+		);
+	});
+
+	test('leaves a reasoning item with nothing encrypted out of the state', () => {
+		const events = decode('responses', [
+			{ type: 'response.output_item.done', item: { type: 'reasoning', id: 'rs_1' } },
+		]);
+
+		assert.deepEqual(events, []);
 	});
 });

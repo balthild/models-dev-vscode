@@ -21,6 +21,7 @@ export type {
 	NeutralEvent,
 	NeutralImage,
 	NeutralMessage,
+	NeutralReasoning,
 	NeutralTool,
 	NeutralToolCall,
 	NeutralToolResult,
@@ -31,3 +32,10 @@ export type {
 } from './types.ts';
 export { createSseParser } from './sse.ts';
 export type { SseParser } from './sse.ts';
+export {
+	REASONING_METADATA,
+	readReasoningState,
+	reasoningMetadata,
+	replayableReasoning,
+} from './reasoning.ts';
+export type { ReasoningState } from './reasoning.ts';

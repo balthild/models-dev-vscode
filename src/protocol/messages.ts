@@ -5,6 +5,7 @@ import type {
 	NeutralEvent,
 	NeutralImage,
 	NeutralMessage,
+	NeutralReasoning,
 	NeutralToolResult,
 	ProtocolAdapter,
 	ProtocolRequest,
@@ -150,8 +151,9 @@ function userBlocks(message: NeutralMessage): unknown[] {
 
 function assistantBlocks(message: NeutralMessage): unknown[] {
 	return [
-		// Replayed reasoning is dropped: a thinking block without its signature is
-		// rejected, and the host round-trip does not carry one.
+		// Reasoning has to lead the assistant content, and a block the model did not sign would
+		// be rejected, so only verified blocks get here.
+		...message.reasoning.map(reasoningBlock),
 		...(message.text === '' ? [] : [{ type: 'text', text: message.text }]),
 		...message.toolCalls.map((call) => ({
 			type: 'tool_use',
@@ -160,6 +162,15 @@ function assistantBlocks(message: NeutralMessage): unknown[] {
 			input: parseArguments(call.arguments),
 		})),
 	];
+}
+
+/** Rebuild a reasoning block, which is either withheld or signed. */
+function reasoningBlock(reasoning: NeutralReasoning): unknown {
+	if (reasoning.redacted !== undefined) {
+		return { type: 'redacted_thinking', data: reasoning.redacted };
+	}
+
+	return { type: 'thinking', thinking: reasoning.text, signature: reasoning.signature ?? '' };
 }
 
 function toolResultBlock(result: NeutralToolResult): unknown {
@@ -198,10 +209,35 @@ function parseArguments(text: string): unknown {
 	}
 }
 
+/** Reasoning accumulated for one open content block. */
+interface ThinkingBlock {
+	text: string;
+	signature: string;
+}
+
 function createStreamDecoder(): StreamDecoder {
 	const calls = createToolCallBuffer();
+	// Keyed by block index, which is how the stream addresses a block across events.
+	const blocks = new Map<number, ThinkingBlock>();
 	let inputTokens: number | undefined;
 	let outputTokens: number | undefined;
+
+	const closeThinkingBlock = (index: number): NeutralEvent[] => {
+		const block = blocks.get(index);
+		if (block === undefined) {
+			return [];
+		}
+
+		blocks.delete(index);
+
+		// Without a signature the block cannot be replayed, so it is dropped here rather than
+		// offered to a request that would be rejected for it.
+		if (block.signature === '' || block.text === '') {
+			return [];
+		}
+
+		return [{ kind: 'thinkingState', text: block.text, signature: block.signature }];
+	};
 
 	return {
 		push(event: SseEvent): NeutralEvent[] {
@@ -209,8 +245,6 @@ function createStreamDecoder(): StreamDecoder {
 			if (data === undefined) {
 				return [];
 			}
-
-			const events: NeutralEvent[] = [];
 
 			switch (readString(data.type)) {
 				case 'message_start': {
@@ -223,19 +257,25 @@ function createStreamDecoder(): StreamDecoder {
 
 				case 'content_block_start': {
 					const block = isRecord(data.content_block) ? data.content_block : undefined;
+					const index = readNumber(data.index) ?? 0;
+
 					if (block !== undefined && readString(block.type) === 'tool_use') {
-						calls.push(readNumber(data.index) ?? 0, {
+						calls.push(index, {
 							callId: readString(block.id),
 							name: readString(block.name),
 						});
+					} else if (block !== undefined && readString(block.type) === 'thinking') {
+						blocks.set(index, { text: '', signature: '' });
 					}
 					break;
 				}
 
 				case 'content_block_delta': {
-					events.push(...readBlockDelta(data, calls));
-					break;
+					return readBlockDelta(data, calls, blocks);
 				}
+
+				case 'content_block_stop':
+					return closeThinkingBlock(readNumber(data.index) ?? 0);
 
 				case 'message_delta': {
 					outputTokens = isRecord(data.usage)
@@ -248,11 +288,12 @@ function createStreamDecoder(): StreamDecoder {
 					break;
 			}
 
-			return events;
+			return [];
 		},
 
 		flush(): NeutralEvent[] {
-			const events = calls.flush();
+			const events = [...blocks.keys()].flatMap((index) => closeThinkingBlock(index));
+			events.push(...calls.flush());
 			if (inputTokens !== undefined || outputTokens !== undefined) {
 				events.push({ kind: 'usage', inputTokens, outputTokens });
 			}
@@ -265,11 +306,14 @@ function createStreamDecoder(): StreamDecoder {
 function readBlockDelta(
 	data: Record<string, unknown>,
 	calls: ReturnType<typeof createToolCallBuffer>,
+	blocks: Map<number, ThinkingBlock>,
 ): NeutralEvent[] {
 	const delta = isRecord(data.delta) ? data.delta : undefined;
 	if (delta === undefined) {
 		return [];
 	}
+
+	const block = blocks.get(readNumber(data.index) ?? 0);
 
 	switch (readString(delta.type)) {
 		case 'text_delta': {
@@ -280,8 +324,23 @@ function readBlockDelta(
 
 		case 'thinking_delta': {
 			const text = readString(delta.thinking);
+			if (text === undefined || text === '' || block === undefined) {
+				return [];
+			}
 
-			return text === undefined || text === '' ? [] : [{ kind: 'thinking', text }];
+			// The full text is kept for replay, since the state event is only sent once.
+			block.text += text;
+
+			return [{ kind: 'thinking', text }];
+		}
+
+		case 'signature_delta': {
+			// Arrives as the block closes, after the text it signs.
+			if (block !== undefined) {
+				block.signature += readString(delta.signature) ?? '';
+			}
+
+			return [];
 		}
 
 		case 'input_json_delta':

@@ -3,10 +3,14 @@ import * as vscode from 'vscode';
 import type {
 	NeutralImage,
 	NeutralMessage,
+	NeutralReasoning,
 	NeutralTool,
 	NeutralToolCall,
 	NeutralToolResult,
 } from '#/protocol/index.ts';
+import { readReasoningState, replayableReasoning } from '#/protocol/index.ts';
+
+import { thinkingPartConstructor } from './thinking.ts';
 
 /** Convert the host's request messages into the protocol-neutral form. */
 export function toNeutralMessages(
@@ -36,6 +40,8 @@ function toNeutralMessage(message: vscode.LanguageModelChatRequestMessage): Neut
 	const images: NeutralImage[] = [];
 	const toolCalls: NeutralToolCall[] = [];
 	const toolResults: NeutralToolResult[] = [];
+	const reasoning: NeutralReasoning[] = [];
+	const thinkingPart = thinkingPartConstructor();
 
 	for (const part of message.content) {
 		if (part instanceof vscode.LanguageModelTextPart) {
@@ -54,6 +60,13 @@ function toNeutralMessage(message: vscode.LanguageModelChatRequestMessage): Neut
 			});
 		} else if (part instanceof vscode.LanguageModelToolResultPart) {
 			toolResults.push(toToolResult(part));
+		} else if (thinkingPart !== undefined && part instanceof thinkingPart) {
+			// Only the block carrying replay state survives this; the fragments streamed for display
+			// have nothing to send back.
+			const replayable = replayableReasoning(readReasoningState(part));
+			if (replayable !== undefined) {
+				reasoning.push(replayable);
+			}
 		}
 	}
 
@@ -63,6 +76,7 @@ function toNeutralMessage(message: vscode.LanguageModelChatRequestMessage): Neut
 		images,
 		toolCalls,
 		toolResults,
+		reasoning,
 	};
 }
 

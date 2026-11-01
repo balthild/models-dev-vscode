@@ -22,6 +22,24 @@ export interface NeutralToolResult {
 	readonly images: readonly NeutralImage[];
 }
 
+/**
+ * Reasoning a provider requires back verbatim before it accepts the rest of the turn.
+ *
+ * Only a block that carries proof it came from the model belongs here: the Messages API rejects a
+ * thinking block with no signature, so an unsigned block has to be left out rather than risk a
+ * rejected request.
+ */
+export interface NeutralReasoning {
+	/** Provider identifier for the block, when replay needs one. */
+	readonly id?: string;
+	/** The reasoned text. Empty when the provider withheld it. */
+	readonly text: string;
+	/** Opaque state proving the block came from the model. */
+	readonly signature?: string;
+	/** A withheld block's opaque payload, which stands in for its text. */
+	readonly redacted?: string;
+}
+
 /** One chat turn, in a shape no particular wire protocol owns. */
 export interface NeutralMessage {
 	readonly role: 'user' | 'assistant';
@@ -29,6 +47,7 @@ export interface NeutralMessage {
 	readonly images: readonly NeutralImage[];
 	readonly toolCalls: readonly NeutralToolCall[];
 	readonly toolResults: readonly NeutralToolResult[];
+	readonly reasoning: readonly NeutralReasoning[];
 }
 
 /** A tool offered to the model. */
@@ -72,6 +91,19 @@ export interface ProtocolRequest {
 export type NeutralEvent =
 	| { readonly kind: 'text'; readonly text: string }
 	| { readonly kind: 'thinking'; readonly text: string }
+	| {
+			/**
+			 * Opaque state belonging to the reasoning block that preceded it, reported once per block.
+			 *
+			 * Without it the next turn loses the model's own reasoning, and on some APIs is rejected
+			 * outright.
+			 */
+			readonly kind: 'thinkingState';
+			readonly id?: string;
+			readonly text: string;
+			readonly signature?: string;
+			readonly redacted?: string;
+	  }
 	| {
 			readonly kind: 'toolCall';
 			readonly callId: string;

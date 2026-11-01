@@ -1,3 +1,4 @@
+import { replayableReasoning } from './reasoning.ts';
 import type {
 	BuildInput,
 	NeutralEvent,
@@ -93,6 +94,21 @@ function messageItems(message: NeutralMessage): unknown[] {
 
 	const items: unknown[] = [];
 
+	// Reasoning has to precede the output it belongs to, and the API addresses a reasoning item by
+	// its id, so a block without one has nothing to replay against.
+	for (const reasoning of message.reasoning) {
+		if (reasoning.id === undefined || reasoning.signature === undefined) {
+			continue;
+		}
+
+		items.push({
+			type: 'reasoning',
+			id: reasoning.id,
+			encrypted_content: reasoning.signature,
+			summary: [],
+		});
+	}
+
 	if (message.text !== '') {
 		items.push({
 			type: 'message',
@@ -136,6 +152,8 @@ function inputImage(image: NeutralImage): unknown {
 
 function createStreamDecoder(): StreamDecoder {
 	const calls: ToolCallBuffer = createToolCallBuffer();
+	// Summary text accumulated per output item, keyed by the item's id.
+	const summaries = new Map<string, string>();
 	let inputTokens: number | undefined;
 	let outputTokens: number | undefined;
 
@@ -156,8 +174,16 @@ function createStreamDecoder(): StreamDecoder {
 				case 'response.reasoning_summary_text.delta':
 				case 'response.reasoning_text.delta': {
 					const text = readString(data.delta);
+					if (text === undefined || text === '') {
+						return [];
+					}
 
-					return text === undefined || text === '' ? [] : [{ kind: 'thinking', text }];
+					const itemId = readString(data.item_id);
+					if (itemId !== undefined) {
+						summaries.set(itemId, (summaries.get(itemId) ?? '') + text);
+					}
+
+					return [{ kind: 'thinking', text }];
 				}
 
 				case 'response.output_item.added': {
@@ -170,6 +196,24 @@ function createStreamDecoder(): StreamDecoder {
 					}
 
 					return [];
+				}
+
+				case 'response.output_item.done': {
+					const item = isRecord(data.item) ? data.item : undefined;
+					if (item === undefined || readString(item.type) !== 'reasoning') {
+						return [];
+					}
+
+					// The encrypted content is what lets a stateless request be replayed, and is only
+					// present when the model produced reasoning at all.
+					const id = readString(item.id);
+					const state = replayableReasoning({
+						id,
+						signature: readString(item.encrypted_content),
+						complete: id === undefined ? undefined : summaries.get(id),
+					});
+
+					return state === undefined ? [] : [{ kind: 'thinkingState', ...state }];
 				}
 
 				case 'response.function_call_arguments.delta':

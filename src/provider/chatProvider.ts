@@ -4,9 +4,11 @@ import type { NeutralModel } from '#/catalog/derive.ts';
 import type { EffortChoice } from '#/catalog/reasoning.ts';
 import type { NeutralEvent, ProtocolRequest, StreamDecoder } from '#/protocol/index.ts';
 import { adapterFor, createSseParser } from '#/protocol/index.ts';
+import { reasoningMetadata } from '#/protocol/index.ts';
 
 import { toModelInformation } from './modelInfo.ts';
 import { requiresToolCall, toNeutralMessages, toNeutralTools } from './request.ts';
+import { thinkingPartConstructor } from './thinking.ts';
 import { countTokens } from './tokenCount.ts';
 
 export interface ChatProviderOptions {
@@ -178,6 +180,10 @@ function report(
 				break;
 			}
 
+			case 'thinkingState':
+				reportThinkingState(event, progress, log);
+				break;
+
 			case 'toolCall':
 				progress.report(
 					new vscode.LanguageModelToolCallPart(
@@ -206,6 +212,24 @@ function report(
 }
 
 /**
+ * Report the state that lets this turn be replayed.
+ *
+ * The text is left out on purpose: it already streamed as `thinking` events, so repeating it here
+ * would show the reasoning twice.
+ */
+function reportThinkingState(
+	event: { id?: string; text: string; signature?: string; redacted?: string },
+	progress: vscode.Progress<vscode.LanguageModelResponsePart>,
+	log: vscode.LogOutputChannel,
+): void {
+	const part = createThinkingPart('', log, event.id, reasoningMetadata(event));
+
+	if (part !== undefined) {
+		progress.report(part);
+	}
+}
+
+/**
  * Build a reasoning part, if the host has one.
  *
  * `LanguageModelThinkingPart` is declared in the proposed languageModelThinkingPart API, so an
@@ -215,19 +239,16 @@ function report(
 function createThinkingPart(
 	text: string,
 	log: vscode.LogOutputChannel,
+	id?: string,
+	metadata?: Readonly<Record<string, unknown>>,
 ): vscode.LanguageModelResponsePart | undefined {
-	const constructor = (
-		vscode as unknown as {
-			LanguageModelThinkingPart?: new (value: string) => unknown;
-		}
-	).LanguageModelThinkingPart;
-
-	if (typeof constructor !== 'function') {
+	const constructor = thinkingPartConstructor();
+	if (constructor === undefined) {
 		return undefined;
 	}
 
 	try {
-		return new constructor(text) as vscode.LanguageModelResponsePart;
+		return new constructor(text, id, metadata) as vscode.LanguageModelResponsePart;
 	} catch (error) {
 		log.warn(`Could not report reasoning: ${String(error)}`);
 
