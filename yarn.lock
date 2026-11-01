@@ -138,6 +138,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@microsoft/tiktokenizer@npm:^1.0.10":
+  version: 1.0.10
+  resolution: "@microsoft/tiktokenizer@npm:1.0.10"
+  checksum: 10c0/d5561ff3b9483177632e02a2dc30a990f50f3f29946bafd17ffbf556618644ff02a89c79ae8821d94126ca980fa3d7466b860a49fae421ef3e096ba5e36289d6
+  languageName: node
+  linkType: hard
+
 "@oxc-project/types@npm:=0.156.0":
   version: 0.156.0
   resolution: "@oxc-project/types@npm:0.156.0"
@@ -723,6 +730,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "models-dev-vscode@workspace:."
   dependencies:
+    "@microsoft/tiktokenizer": "npm:^1.0.10"
     "@oxlint/plugins": "npm:^1.88.0"
     "@types/node": "npm:^24.19.2"
     "@types/vscode": "npm:^1.140.0"

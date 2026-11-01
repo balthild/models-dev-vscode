@@ -26,6 +26,7 @@
 		"test": "node --test 'test/**/*.test.ts'",
 		"snapshot": "node scripts/generate-snapshot.ts",
 		"manifest": "node scripts/generate-manifest.ts",
+		"ranks": "node scripts/fetch-ranks.ts",
 		"lint": "oxlint",
 		"lint:fix": "oxlint --fix",
 		"fmt": "dprint fmt",
@@ -623,6 +624,9 @@
 	"activationEvents": [
 		"onStartupFinished"
 	],
+	"dependencies": {
+		"@microsoft/tiktokenizer": "^1.0.10"
+	},
 	"devDependencies": {
 		"@oxlint/plugins": "^1.88.0",
 		"@types/node": "^24.19.2",

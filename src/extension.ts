@@ -4,10 +4,14 @@ import { CatalogStore } from './catalog/store.ts';
 import { registerCommands } from './commands.ts';
 import { enabledProviders, onDidChangeProviders } from './config/settings.ts';
 import { ProviderRegistry } from './provider/registry.ts';
+import { loadTokenizer } from './provider/tokenCount.ts';
 import { messageOf } from './util/errors.ts';
 
 /** Download a newer catalog when the cached one is at least this old. */
 const MAX_CACHE_AGE_MS = 24 * 60 * 60 * 1000;
+
+/** The tokenizer's BPE ranks, loaded from the assets shipped with the extension. */
+const RANKS_PATH = 'assets/o200k_base.tiktoken';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
 	const log = vscode.window.createOutputChannel('Models.dev', { log: true });
@@ -32,6 +36,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		void vscode.window.showErrorMessage(
 			'Models.dev could not read its bundled model data. Reinstalling the extension should fix it.',
 		);
+
+		try {
+			loadTokenizer(context.asAbsolutePath(RANKS_PATH));
+		} catch (error) {
+			// Counting is advisory, so a missing ranks file degrades counts rather than
+			// failing the extension.
+			log.warn(`Could not load the tokenizer; token counts stay approximate. ${messageOf(error)}`);
+		}
 
 		return;
 	}
