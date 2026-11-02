@@ -8,6 +8,7 @@ import * as vscode from 'vscode';
 import type { NeutralModel } from '#/catalog/derive.ts';
 import type { EffortChoice } from '#/catalog/reasoning.ts';
 
+import type { Credentials } from './credentials.ts';
 import { credentialsOf } from './credentials.ts';
 import { listableModels } from './modelInfo.ts';
 import { reasoningMetadata, toThinkingLevel } from './reasoning.ts';
@@ -38,14 +39,19 @@ export class CatalogChatProvider implements vscode.LanguageModelChatProvider, vs
 	private collection: ReturnType<typeof createModels> | undefined;
 
 	/**
-	 * The options the host resolved from the manifest's `configuration` schema, which is where the
-	 * API key lives.
+	 * The credentials behind every model this provider listed.
 	 *
-	 * Only {@link provideLanguageModelChatInformation} receives them, so the last set is kept here for
-	 * the requests that follow. A request cannot tell which group it belongs to, so a vendor the user
-	 * adds twice would key every request with whichever group resolved last.
+	 * A request names no group. The host builds the model names it shows and dispatches
+	 * (`vendor/<group>/<id>`) itself, and hands the provider neither the group nor that name; what it
+	 * does hand back is the very model object this provider returned for that group's listing. Object
+	 * identity is therefore the only per-group handle that survives from listing to dispatch, and it
+	 * answers the one question a request carries — which key belongs to this model. A vendor the user
+	 * adds twice keys each group's requests with its own credentials.
 	 */
-	private configuration: Readonly<Record<string, unknown>> | undefined;
+	private readonly credentialsByModel = new WeakMap<object, Credentials>();
+
+	/** The last listing's credentials, for a request whose model object is not one of ours. */
+	private lastCredentials: Credentials | undefined;
 
 	/**
 	 * The host only re-reads a provider's models after this event fires, so it has to be present for
@@ -73,11 +79,17 @@ export class CatalogChatProvider implements vscode.LanguageModelChatProvider, vs
 		// Declared in the proposed chatProvider API, so it is read defensively.
 		const configuration = (options as { configuration?: Readonly<Record<string, unknown>> })
 			.configuration;
-		if (configuration !== undefined) {
-			this.configuration = configuration;
+		const credentials = credentialsOf(configuration);
+		const models = listableModels(configuration, this.options.models());
+
+		if (credentials !== undefined) {
+			this.lastCredentials = credentials;
+			for (const model of models) {
+				this.credentialsByModel.set(model, credentials);
+			}
 		}
 
-		return listableModels(configuration, this.options.models());
+		return models;
 	}
 
 	async provideLanguageModelChatResponse(
@@ -92,7 +104,7 @@ export class CatalogChatProvider implements vscode.LanguageModelChatProvider, vs
 			throw new Error(`This model is no longer offered by ${this.options.vendor}.`);
 		}
 
-		const credentials = credentialsOf(this.configuration);
+		const credentials = this.credentialsFor(model);
 		if (credentials === undefined) {
 			throw new Error(
 				`No API key is configured for ${this.options.vendor}. Add it through Add Models in the model picker.`,
@@ -128,6 +140,28 @@ export class CatalogChatProvider implements vscode.LanguageModelChatProvider, vs
 		text: string | vscode.LanguageModelChatRequestMessage,
 	): Promise<number> {
 		return countTokens(text);
+	}
+
+	/**
+	 * The credentials for the listing a request belongs to.
+	 *
+	 * The fallback covers a model object that did not come from a listing. Nothing in the host's
+	 * model proxy does that today, but failing the request outright would be a worse outcome than
+	 * using the credentials resolved most recently.
+	 */
+	private credentialsFor(model: object): Credentials | undefined {
+		const listed = this.credentialsByModel.get(model);
+		if (listed !== undefined) {
+			return listed;
+		}
+
+		if (this.lastCredentials !== undefined) {
+			this.options.log.warn(
+				`[${this.options.vendor}] A request named a model this provider did not list. Falling back to the most recently resolved credentials.`,
+			);
+		}
+
+		return this.lastCredentials;
 	}
 
 	/** The provider collection for a vendor, built on first use. */
