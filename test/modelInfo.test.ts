@@ -12,7 +12,7 @@ function model(overrides: Partial<NeutralModel> = {}): NeutralModel {
 		description: 'A model',
 		family: 'family',
 		version: '2026-01-01',
-		protocol: 'chatCompletions',
+		api: 'openai-completions',
 		baseUrl: 'https://example.test/v1',
 		contextWindow: 100_000,
 		maxInputTokens: 90_000,

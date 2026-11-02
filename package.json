@@ -629,6 +629,7 @@
 		"onStartupFinished"
 	],
 	"dependencies": {
+		"@earendil-works/pi-ai": "^1.4.0",
 		"@microsoft/tiktokenizer": "^1.0.10"
 	},
 	"devDependencies": {

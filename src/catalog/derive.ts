@@ -1,5 +1,5 @@
-import type { ProtocolId } from './protocol.ts';
-import { resolveProtocol } from './protocol.ts';
+import type { Api } from '@earendil-works/pi-ai';
+
 import type { ReasoningProfile } from './reasoning.ts';
 import { deriveReasoning } from './reasoning.ts';
 import type { CatalogModel, CatalogProvider, Modality } from './types.ts';
@@ -15,7 +15,8 @@ export interface NeutralModel {
 	/** Model lineage, used to group and select models. */
 	readonly family: string;
 	readonly version: string;
-	readonly protocol: ProtocolId;
+	/** Wire protocol, as named by the provider library that speaks it. */
+	readonly api: Api;
 	/** Base API URL, without the protocol's path. */
 	readonly baseUrl: string;
 	readonly contextWindow: number;
@@ -48,11 +49,11 @@ export function deriveModel({ provider, model }: DeriveInput): NeutralModel | un
 		return undefined;
 	}
 
-	const protocol = resolveProtocol(model.provider?.npm ?? provider.npm, model.provider?.shape);
+	const api = resolveApi(model.provider?.npm ?? provider.npm, model.provider?.shape);
 	// A model-specific endpoint wins: hosts can serve one model from a different
 	// base than the rest of the provider.
 	const baseUrl = model.provider?.api ?? provider.api;
-	if (protocol === undefined || baseUrl === undefined) {
+	if (api === undefined || baseUrl === undefined) {
 		return undefined;
 	}
 
@@ -62,7 +63,7 @@ export function deriveModel({ provider, model }: DeriveInput): NeutralModel | un
 		description: model.description,
 		family: model.family ?? provider.id,
 		version: model.last_updated ?? model.release_date ?? '1',
-		protocol,
+		api,
 		baseUrl,
 		contextWindow: limit.context,
 		// The catalog often omits the input cap. Deriving it from the window keeps
@@ -99,4 +100,39 @@ function servesChat(model: CatalogModel): boolean {
 
 function accepts(model: CatalogModel, modality: Modality): boolean {
 	return model.modalities?.input.includes(modality) ?? false;
+}
+
+/**
+ * AI SDK package to the API the provider library implements it with.
+ *
+ * Routing by package rather than by provider id keeps a new relay provider working without a code
+ * change. Providers served by other packages (Google's native generateContent, Amazon Bedrock,
+ * Azure, Vertex) need credentials this extension cannot collect, so they are deliberately absent
+ * and therefore unresolvable.
+ */
+const PACKAGE_APIS: Readonly<Record<string, Api>> = {
+	'@ai-sdk/openai': 'openai-completions',
+	'@ai-sdk/openai-compatible': 'openai-completions',
+	'@ai-sdk/anthropic': 'anthropic-messages',
+};
+
+/**
+ * Resolve the wire protocol for a model.
+ *
+ * @param npm The model's SDK package, falling back to its provider's.
+ * @param shape The catalog's API-surface hint, for packages serving more than one.
+ * @returns The protocol, or `undefined` when this extension cannot speak it.
+ */
+function resolveApi(npm: string | undefined, shape: string | undefined): Api | undefined {
+	if (npm === undefined) {
+		return undefined;
+	}
+
+	const api = PACKAGE_APIS[npm];
+	if (api === undefined) {
+		return undefined;
+	}
+
+	// Only the OpenAI packages expose a second surface, the Responses API.
+	return shape === 'responses' && api === 'openai-completions' ? 'openai-responses' : api;
 }

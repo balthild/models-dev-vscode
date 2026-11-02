@@ -11,5 +11,9 @@ export default defineConfig({
 		format: 'esm',
 		exports: 'named',
 		sourcemap: true,
+		// The provider SDKs are loaded lazily, which would otherwise split the
+		// output into several chunks. The extension manifest declares one entry
+		// file, so everything is inlined instead.
+		codeSplitting: false,
 	},
 });

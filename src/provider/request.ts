@@ -1,111 +1,191 @@
+import type {
+	ImageContent,
+	Message,
+	TextContent,
+	ThinkingContent,
+	Tool,
+	ToolCall,
+} from '@earendil-works/pi-ai';
 import * as vscode from 'vscode';
 
-import type {
-	NeutralImage,
-	NeutralMessage,
-	NeutralReasoning,
-	NeutralTool,
-	NeutralToolCall,
-	NeutralToolResult,
-} from '#/protocol/index.ts';
-import { readReasoningState, replayableReasoning } from '#/protocol/index.ts';
+import type { NeutralModel } from '#/catalog/derive.ts';
 
-import { thinkingPartConstructor } from './thinking.ts';
+import { thinkingFromMetadata } from './reasoning.ts';
 
-/** Convert the host's request messages into the protocol-neutral form. */
-export function toNeutralMessages(
-	messages: readonly vscode.LanguageModelChatRequestMessage[],
-): NeutralMessage[] {
-	return messages.map(toNeutralMessage);
-}
-
-/** Convert the tools the host offers for a request. */
-export function toNeutralTools(
-	tools: readonly vscode.LanguageModelChatTool[] | undefined,
-): NeutralTool[] {
+/** Convert the host's tools into the provider library's shape. */
+export function toWireTools(tools: readonly vscode.LanguageModelChatTool[] | undefined): Tool[] {
 	return (tools ?? []).map((tool) => ({
 		name: tool.name,
 		description: tool.description,
-		parameters: tool.inputSchema,
+		// The host validates tool input against this schema before invoking it.
+		parameters: tool.inputSchema as Tool['parameters'],
 	}));
 }
 
-/** Whether the request requires a tool call rather than merely permitting one. */
-export function requiresToolCall(mode: vscode.LanguageModelChatToolMode | undefined): boolean {
-	return mode === vscode.LanguageModelChatToolMode.Required;
+/**
+ * Convert the host's conversation into the provider library's messages.
+ *
+ * @param model The model the request is for. The library only replays reasoning for messages whose
+ *   recorded model still matches, and the host does not say which model produced each past turn, so
+ *   the current model is stamped on every one.
+ */
+export function toWireMessages(
+	messages: readonly vscode.LanguageModelChatRequestMessage[],
+	model: NeutralModel,
+): Message[] {
+	return messages.flatMap((message) => [
+		...toWireMessage(message, model),
+		...toWireToolResults(message),
+	]);
 }
 
-function toNeutralMessage(message: vscode.LanguageModelChatRequestMessage): NeutralMessage {
-	let text = '';
-	const images: NeutralImage[] = [];
-	const toolCalls: NeutralToolCall[] = [];
-	const toolResults: NeutralToolResult[] = [];
-	const reasoning: NeutralReasoning[] = [];
-	const thinkingPart = thinkingPartConstructor();
+function toWireMessage(
+	message: vscode.LanguageModelChatRequestMessage,
+	model: NeutralModel,
+): Message[] {
+	if (message.role === vscode.LanguageModelChatMessageRole.User) {
+		const images = message.content.filter(isImagePart);
+		const text = textOf(message.content);
 
-	for (const part of message.content) {
+		return [
+			{
+				role: 'user',
+				content:
+					images.length === 0
+						? text
+						: [
+								...(text === '' ? [] : [{ type: 'text' as const, text }]),
+								...images.map(toImageContent),
+							],
+				timestamp: Date.now(),
+			},
+		];
+	}
+
+	return [assistantMessage(message.content, model)];
+}
+
+function assistantMessage(
+	parts: vscode.LanguageModelChatRequestMessage['content'],
+	model: NeutralModel,
+): Message {
+	const content: (TextContent | ThinkingContent | ToolCall)[] = [];
+
+	for (const part of parts) {
 		if (part instanceof vscode.LanguageModelTextPart) {
-			text += part.value;
-		} else if (part instanceof vscode.LanguageModelDataPart) {
-			const image = toImage(part);
-			if (image !== undefined) {
-				images.push(image);
+			if (part.value !== '') {
+				content.push({ type: 'text', text: part.value });
 			}
 		} else if (part instanceof vscode.LanguageModelToolCallPart) {
-			toolCalls.push({
-				callId: part.callId,
+			content.push({
+				type: 'toolCall',
+				id: part.callId,
 				name: part.name,
-				// The host hands over parsed input; the wire formats all expect text.
-				arguments: JSON.stringify(part.input ?? {}),
+				arguments: asJsonObject(part.input),
 			});
-		} else if (part instanceof vscode.LanguageModelToolResultPart) {
-			toolResults.push(toToolResult(part));
-		} else if (thinkingPart !== undefined && part instanceof thinkingPart) {
-			// Only the block carrying replay state survives this; the fragments streamed for display
-			// have nothing to send back.
-			const replayable = replayableReasoning(readReasoningState(part));
-			if (replayable !== undefined) {
-				reasoning.push(replayable);
+		} else {
+			// A reasoning part is declared in a proposed API, so it is identified by shape rather
+			// than with `instanceof`.
+			const thinking = thinkingFromMetadata((part as { metadata?: unknown }).metadata);
+			if (thinking !== undefined) {
+				content.push(thinking);
 			}
 		}
 	}
 
 	return {
-		role: message.role === vscode.LanguageModelChatMessageRole.Assistant ? 'assistant' : 'user',
-		text,
-		images,
-		toolCalls,
-		toolResults,
-		reasoning,
+		role: 'assistant',
+		content,
+		// Stamping the current model is what lets the library replay reasoning at all; see
+		// {@link toWireMessages}.
+		api: model.api,
+		provider: model.api,
+		model: model.id,
+		usage: EMPTY_USAGE,
+		stopReason: 'stop',
+		timestamp: Date.now(),
 	};
 }
 
-function toToolResult(part: vscode.LanguageModelToolResultPart): NeutralToolResult {
-	let text = '';
-	const images: NeutralImage[] = [];
+/**
+ * Tool results, which the host delivers as parts of the assistant turn that asked for them.
+ *
+ * The library carries the tool's name on the result, but the host does not repeat it there, so it
+ * is taken from the matching call in the same turn.
+ */
+function toWireToolResults(message: vscode.LanguageModelChatRequestMessage): Message[] {
+	const names = new Map(
+		message.content
+			.filter(
+				(part): part is vscode.LanguageModelToolCallPart =>
+					part instanceof vscode.LanguageModelToolCallPart,
+			)
+			.map((call) => [call.callId, call.name]),
+	);
 
-	for (const content of part.content) {
-		if (content instanceof vscode.LanguageModelTextPart) {
-			text += content.value;
-		} else if (content instanceof vscode.LanguageModelDataPart) {
-			const image = toImage(content);
-			if (image !== undefined) {
-				images.push(image);
+	return message.content.flatMap((part): Message[] => {
+		if (!(part instanceof vscode.LanguageModelToolResultPart)) {
+			return [];
+		}
+
+		const content: (TextContent | ImageContent)[] = [];
+		for (const item of part.content) {
+			if (item instanceof vscode.LanguageModelTextPart) {
+				content.push({ type: 'text', text: item.value });
+			} else if (isImagePart(item)) {
+				content.push(toImageContent(item));
 			}
 		}
-	}
 
-	return { callId: part.callId, text, images };
+		return [
+			{
+				role: 'toolResult',
+				toolCallId: part.callId,
+				toolName: names.get(part.callId) ?? '',
+				content,
+				isError: false,
+				timestamp: Date.now(),
+			},
+		];
+	});
+}
+
+function textOf(parts: vscode.LanguageModelChatRequestMessage['content']): string {
+	return parts
+		.filter(
+			(part): part is vscode.LanguageModelTextPart => part instanceof vscode.LanguageModelTextPart,
+		)
+		.map((part) => part.value)
+		.join('');
+}
+
+function toImageContent(part: vscode.LanguageModelDataPart): ImageContent {
+	return {
+		type: 'image',
+		data: Buffer.from(part.data).toString('base64'),
+		mimeType: part.mimeType,
+	};
+}
+
+function isImagePart(part: unknown): part is vscode.LanguageModelDataPart {
+	return part instanceof vscode.LanguageModelDataPart && part.mimeType.startsWith('image/');
+}
+
+function asJsonObject(value: unknown): ToolCall['arguments'] {
+	return typeof value === 'object' && value !== null ? (value as ToolCall['arguments']) : {};
 }
 
 /**
- * Read a data part as an image.
+ * A placeholder for replayed turns.
  *
- * Only images are passed on: the other data parts on this API carry protocol bookkeeping rather
- * than anything a model can consume.
+ * The library reports usage for turns it performed; a turn being replayed was already counted when
+ * it happened.
  */
-function toImage(part: vscode.LanguageModelDataPart): NeutralImage | undefined {
-	return part.mimeType.startsWith('image/')
-		? { data: part.data, mimeType: part.mimeType }
-		: undefined;
-}
+const EMPTY_USAGE = {
+	input: 0,
+	output: 0,
+	cacheRead: 0,
+	cacheWrite: 0,
+	totalTokens: 0,
+	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+};

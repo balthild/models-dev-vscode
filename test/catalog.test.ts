@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import { deriveModel, deriveProviderModels } from '#/catalog/derive.ts';
-import { resolveProtocol } from '#/catalog/protocol.ts';
 import { deriveReasoning, reasoningChoices } from '#/catalog/reasoning.ts';
 import type { CatalogModel, CatalogProvider } from '#/catalog/types.ts';
 
@@ -21,22 +20,27 @@ function provider(overrides: Partial<CatalogProvider> = {}): CatalogProvider {
 	};
 }
 
-describe('resolveProtocol', () => {
+/** The protocol a model resolves to, which is what decides how a request is built. */
+function apiOf(npm: string, shape?: 'completions' | 'responses'): string | undefined {
+	return deriveModel({ provider: provider({ npm }), model: model({ provider: { shape } }) })?.api;
+}
+
+describe('wire protocol selection', () => {
 	test('maps the OpenAI packages to chat completions', () => {
-		assert.equal(resolveProtocol('@ai-sdk/openai', undefined), 'chatCompletions');
-		assert.equal(resolveProtocol('@ai-sdk/openai-compatible', undefined), 'chatCompletions');
+		assert.equal(apiOf('@ai-sdk/openai'), 'openai-completions');
+		assert.equal(apiOf('@ai-sdk/openai-compatible'), 'openai-completions');
 	});
 
 	test('maps the Anthropic package to messages', () => {
-		assert.equal(resolveProtocol('@ai-sdk/anthropic', undefined), 'messages');
+		assert.equal(apiOf('@ai-sdk/anthropic'), 'anthropic-messages');
 	});
 
 	test('selects the Responses API for the responses shape', () => {
-		assert.equal(resolveProtocol('@ai-sdk/openai', 'responses'), 'responses');
+		assert.equal(apiOf('@ai-sdk/openai', 'responses'), 'openai-responses');
 	});
 
 	test('ignores the responses shape on a package without that surface', () => {
-		assert.equal(resolveProtocol('@ai-sdk/anthropic', 'responses'), 'messages');
+		assert.equal(apiOf('@ai-sdk/anthropic', 'responses'), 'anthropic-messages');
 	});
 
 	test('rejects packages whose credentials it cannot collect', () => {
@@ -48,12 +52,8 @@ describe('resolveProtocol', () => {
 		];
 
 		for (const npm of unsupported) {
-			assert.equal(resolveProtocol(npm, undefined), undefined, npm);
+			assert.equal(apiOf(npm), undefined, npm);
 		}
-	});
-
-	test('rejects a model with no package at all', () => {
-		assert.equal(resolveProtocol(undefined, undefined), undefined);
 	});
 });
 
@@ -207,7 +207,7 @@ describe('deriveModel', () => {
 			model: model(),
 		});
 
-		assert.equal(derived?.protocol, 'messages');
+		assert.equal(derived?.api, 'anthropic-messages');
 	});
 
 	test('rejects a model with no output budget', () => {

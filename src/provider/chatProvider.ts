@@ -1,15 +1,19 @@
+import type { AssistantMessageEvent, ProviderStreams } from '@earendil-works/pi-ai';
+import { createModels, createProvider } from '@earendil-works/pi-ai';
+import { anthropicMessagesApi } from '@earendil-works/pi-ai/api/anthropic-messages.lazy';
+import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completions.lazy';
+import { openAIResponsesApi } from '@earendil-works/pi-ai/api/openai-responses.lazy';
 import * as vscode from 'vscode';
 
 import type { NeutralModel } from '#/catalog/derive.ts';
 import type { EffortChoice } from '#/catalog/reasoning.ts';
-import type { NeutralEvent, ProtocolRequest, StreamDecoder } from '#/protocol/index.ts';
-import { adapterFor, createSseParser } from '#/protocol/index.ts';
-import { reasoningMetadata } from '#/protocol/index.ts';
 
 import { toModelInformation } from './modelInfo.ts';
-import { requiresToolCall, toNeutralMessages, toNeutralTools } from './request.ts';
+import { reasoningMetadata } from './reasoning.ts';
+import { toWireMessages, toWireTools } from './request.ts';
 import { thinkingPartConstructor } from './thinking.ts';
 import { countTokens } from './tokenCount.ts';
+import { toWireModel } from './wireModel.ts';
 
 export interface ChatProviderOptions {
 	/** Catalog provider id, which doubles as the VS Code vendor id. */
@@ -23,11 +27,14 @@ export interface ChatProviderOptions {
  * Serves one catalog provider's models to the host.
  *
  * Credentials arrive from the provider's `configuration` contribution, which the host prompts for
- * and stores; nothing here asks for them itself.
+ * and stores; nothing here asks for them itself. Building the request is the provider library's
+ * business — this class only translates between the host's vocabulary and the library's.
  */
 export class CatalogChatProvider implements vscode.LanguageModelChatProvider, vscode.Disposable {
 	private readonly options: ChatProviderOptions;
 	private readonly changes = new vscode.EventEmitter<void>();
+	/** Built once, and dropped when the model list changes so it cannot go stale. */
+	private collection: ReturnType<typeof createModels> | undefined;
 
 	/**
 	 * The options the host resolved from the manifest's `configuration` schema, which is where the
@@ -54,6 +61,7 @@ export class CatalogChatProvider implements vscode.LanguageModelChatProvider, vs
 
 	/** Tell the host the model list changed. */
 	notifyModelsChanged(): void {
+		this.collection = undefined;
 		this.changes.fire();
 	}
 
@@ -89,19 +97,24 @@ export class CatalogChatProvider implements vscode.LanguageModelChatProvider, vs
 			);
 		}
 
-		const adapter = adapterFor(neutral.protocol);
-		const request = adapter.buildRequest({
-			modelId: neutral.id,
-			baseUrl: readSetting(this.configuration, 'baseUrl') ?? neutral.baseUrl,
+		const wireModel = toWireModel(neutral, {
 			apiKey,
-			messages: toNeutralMessages(messages),
-			tools: toNeutralTools(options.tools),
-			requireToolCall: requiresToolCall(options.toolMode),
-			maxOutputTokens: neutral.maxOutputTokens,
-			reasoning: { choice: readEffort(options), budget: neutral.reasoning.budget },
+			baseUrl: readSetting(this.configuration, 'baseUrl') ?? neutral.baseUrl,
 		});
+		const stream = this.modelsFor(this.options.vendor).streamSimple(
+			wireModel,
+			{ messages: toWireMessages(messages, neutral), tools: toWireTools(options.tools) },
+			{ apiKey, reasoning: toThinkingLevel(readEffort(options)), signal: toAbortSignal(token) },
+		);
 
-		await stream(this.options.log, request, adapter.startStream(), progress, token);
+		for await (const event of stream) {
+			report(event, progress, this.options.log);
+		}
+
+		const final = await stream.result();
+		if (final.stopReason === 'error') {
+			throw new Error(final.errorMessage ?? 'The provider returned an error.');
+		}
 	}
 
 	async provideTokenCount(
@@ -110,123 +123,171 @@ export class CatalogChatProvider implements vscode.LanguageModelChatProvider, vs
 	): Promise<number> {
 		return countTokens(text);
 	}
-}
 
-async function stream(
-	log: vscode.LogOutputChannel,
-	request: ProtocolRequest,
-	decoder: StreamDecoder,
-	progress: vscode.Progress<vscode.LanguageModelResponsePart>,
-	token: vscode.CancellationToken,
-): Promise<void> {
-	const controller = new AbortController();
-	const cancellation = token.onCancellationRequested(() => controller.abort());
+	/** The provider collection for a vendor, built on first use. */
+	private modelsFor(vendor: string): ReturnType<typeof createModels> {
+		this.collection ??= buildCollection(vendor);
 
-	try {
-		const response = await fetch(request.url, {
-			method: 'POST',
-			headers: request.headers,
-			body: request.body,
-			signal: controller.signal,
-		});
-
-		if (!response.ok) {
-			throw new Error(await describeFailure(response));
-		}
-		if (response.body === null) {
-			throw new Error('The provider returned an empty response.');
-		}
-
-		const parser = createSseParser();
-		const reader = response.body.getReader();
-
-		for (;;) {
-			const { done, value } = await reader.read();
-			if (done) {
-				break;
-			}
-
-			for (const event of parser.push(value)) {
-				report(decoder.push(event), progress, log);
-			}
-		}
-
-		for (const event of parser.end()) {
-			report(decoder.push(event), progress, log);
-		}
-
-		report(decoder.flush(), progress, log);
-	} finally {
-		cancellation.dispose();
+		return this.collection;
 	}
 }
 
-function report(
-	events: readonly NeutralEvent[],
-	progress: vscode.Progress<vscode.LanguageModelResponsePart>,
-	log: vscode.LogOutputChannel,
-): void {
-	for (const event of events) {
-		switch (event.kind) {
-			case 'text':
-				progress.report(new vscode.LanguageModelTextPart(event.text));
-				break;
+function buildCollection(vendor: string): ReturnType<typeof createModels> {
+	const models = createModels();
+	models.setProvider(
+		createProvider({
+			id: vendor,
+			// Auth is supplied per request, so resolving it here would only duplicate it.
+			auth: { apiKey: { name: vendor, resolve: () => Promise.resolve({ auth: {} }) } },
+			// The models come from the catalog per request, so the provider listing stays empty.
+			models: [],
+			api: requestImplementations(),
+		}),
+	);
 
-			case 'thinking': {
-				const part = createThinkingPart(event.text, log);
-				if (part !== undefined) {
-					progress.report(part);
-				}
-				break;
-			}
-
-			case 'thinkingState':
-				reportThinkingState(event, progress, log);
-				break;
-
-			case 'toolCall':
-				progress.report(
-					new vscode.LanguageModelToolCallPart(
-						event.callId,
-						event.name,
-						parseInput(event.arguments),
-					),
-				);
-				break;
-
-			case 'usage':
-				progress.report(
-					new vscode.LanguageModelDataPart(
-						new TextEncoder().encode(
-							JSON.stringify({
-								prompt_tokens: event.inputTokens ?? 0,
-								completion_tokens: event.outputTokens ?? 0,
-							}),
-						),
-						'usage',
-					),
-				);
-				break;
-		}
-	}
+	return models;
 }
 
 /**
- * Report the state that lets this turn be replayed.
+ * The request implementations this extension ships.
  *
- * The text is left out on purpose: it already streamed as `thinking` events, so repeating it here
- * would show the reasoning twice.
+ * A narrow set on purpose: these are the protocols describable with nothing but an API key and an
+ * endpoint. Bedrock (SigV4 plus a region), Vertex (a project, a location and Google credentials)
+ * and Azure (a deployment-based URL) need credentials this extension cannot collect.
  */
-function reportThinkingState(
-	event: { id?: string; text: string; signature?: string; redacted?: string },
+function requestImplementations(): Record<string, ProviderStreams> {
+	return {
+		'anthropic-messages': anthropicMessagesApi(),
+		'openai-completions': openAICompletionsApi(),
+		'openai-responses': openAIResponsesApi(),
+	};
+}
+
+/** Convert the host's cancellation token into the signal the library expects. */
+function toAbortSignal(token: vscode.CancellationToken): AbortSignal {
+	const controller = new AbortController();
+	token.onCancellationRequested(() => controller.abort());
+
+	return controller.signal;
+}
+
+/**
+ * Map the picked effort onto the library's levels.
+ *
+ * `disabled` is not one of them: the library's neutral option type names only real levels, and
+ * turning reasoning off is expressed by leaving the level unset so the provider applies its own
+ * default. That is a deliberate loss of control until a working way to force it off is verified.
+ */
+function toThinkingLevel(
+	choice: EffortChoice | undefined,
+): 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined {
+	return choice === undefined || choice === 'disabled' || choice === 'enabled' ? undefined : choice;
+}
+
+function report(
+	event: AssistantMessageEvent,
 	progress: vscode.Progress<vscode.LanguageModelResponsePart>,
 	log: vscode.LogOutputChannel,
 ): void {
-	const part = createThinkingPart('', log, event.id, reasoningMetadata(event));
+	switch (event.type) {
+		case 'text_delta':
+			progress.report(new vscode.LanguageModelTextPart(event.delta));
+			break;
 
+		case 'thinking_delta': {
+			const part = createThinkingPart(event.delta, log);
+			if (part !== undefined) {
+				progress.report(part);
+			}
+			break;
+		}
+
+		case 'thinking_end':
+			// Whatever lets this block be replayed. Read from the block rather than the event,
+			// because the event carries only the text.
+			reportThinkingState(event, progress, log);
+			break;
+
+		case 'toolcall_end':
+			progress.report(
+				new vscode.LanguageModelToolCallPart(
+					event.toolCall.id,
+					event.toolCall.name,
+					event.toolCall.arguments,
+				),
+			);
+			break;
+
+		case 'done':
+			reportUsage(event.message.usage, progress);
+			break;
+
+		default:
+			break;
+	}
+}
+
+function reportThinkingState(
+	event: Extract<AssistantMessageEvent, { type: 'thinking_end' }>,
+	progress: vscode.Progress<vscode.LanguageModelResponsePart>,
+	log: vscode.LogOutputChannel,
+): void {
+	const block = event.partial.content[event.contentIndex];
+	if (block?.type !== 'thinking') {
+		return;
+	}
+
+	const metadata = reasoningMetadata(block);
+	if (metadata === undefined) {
+		// Nothing here can be replayed, so reporting a part would only add noise.
+		return;
+	}
+
+	// Reported without text on purpose: the text already streamed, so repeating it here would show
+	// the reasoning twice.
+	const part = createThinkingPart('', log, undefined, metadata);
 	if (part !== undefined) {
 		progress.report(part);
 	}
+}
+
+function reportUsage(
+	usage: { input: number; output: number } | undefined,
+	progress: vscode.Progress<vscode.LanguageModelResponsePart>,
+): void {
+	if (usage === undefined) {
+		return;
+	}
+
+	progress.report(
+		new vscode.LanguageModelDataPart(
+			new TextEncoder().encode(
+				JSON.stringify({ prompt_tokens: usage.input, completion_tokens: usage.output }),
+			),
+			'usage',
+		),
+	);
+}
+
+/** Read a non-empty string out of the host-resolved provider configuration. */
+function readSetting(
+	configuration: Readonly<Record<string, unknown>> | undefined,
+	key: string,
+): string | undefined {
+	const value = configuration?.[key];
+
+	return typeof value === 'string' && value !== '' ? value : undefined;
+}
+
+/** Read the reasoning level the user picked, if the host reported one. */
+function readEffort(
+	options: vscode.ProvideLanguageModelChatResponseOptions,
+): EffortChoice | undefined {
+	const proposed = options as { modelConfiguration?: Readonly<Record<string, unknown>> };
+	const chosen =
+		proposed.modelConfiguration?.reasoningEffort ?? options.modelOptions?.reasoningEffort;
+
+	return typeof chosen === 'string' ? (chosen as EffortChoice) : undefined;
 }
 
 /**
@@ -254,52 +315,4 @@ function createThinkingPart(
 
 		return undefined;
 	}
-}
-
-/**
- * The effort the user picked in the model picker.
- *
- * Per-model configuration is declared in the proposed `chatProvider` API, so it is read defensively
- * and falls back to the older free-form options bag.
- */
-function readEffort(
-	options: vscode.ProvideLanguageModelChatResponseOptions,
-): EffortChoice | undefined {
-	const proposed = options as { modelConfiguration?: Readonly<Record<string, unknown>> };
-	const chosen =
-		proposed.modelConfiguration?.reasoningEffort ?? options.modelOptions?.reasoningEffort;
-
-	return typeof chosen === 'string' ? (chosen as EffortChoice) : undefined;
-}
-
-/** Read a non-empty string out of the host-resolved provider configuration. */
-function readSetting(
-	configuration: Readonly<Record<string, unknown>> | undefined,
-	key: string,
-): string | undefined {
-	const value = configuration?.[key];
-
-	return typeof value === 'string' && value !== '' ? value : undefined;
-}
-
-function parseInput(argumentsText: string): object {
-	try {
-		const parsed: unknown = JSON.parse(argumentsText);
-
-		return typeof parsed === 'object' && parsed !== null ? parsed : {};
-	} catch {
-		// A call whose arguments did not survive the wire cannot be run, but failing
-		// here would lose the rest of an otherwise good turn.
-		return {};
-	}
-}
-
-async function describeFailure(response: Response): Promise<string> {
-	const detail = await response.text().catch(() => '');
-	const trimmed = detail.length > 500 ? `${detail.slice(0, 500)}...` : detail;
-	const status = `${response.status}${response.statusText === '' ? '' : ` ${response.statusText}`}`;
-
-	return trimmed === ''
-		? `The provider returned ${status}.`
-		: `The provider returned ${status}: ${trimmed}`;
 }
