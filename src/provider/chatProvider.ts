@@ -9,7 +9,7 @@ import type { NeutralModel } from '#/catalog/derive.ts';
 import type { EffortChoice } from '#/catalog/reasoning.ts';
 
 import { credentialsOf } from './credentials.ts';
-import { toModelInformation } from './modelInfo.ts';
+import { listableModels } from './modelInfo.ts';
 import { reasoningMetadata, toThinkingLevel } from './reasoning.ts';
 import { toWireMessages, toWireTools } from './request.ts';
 import { thinkingPartConstructor } from './thinking.ts';
@@ -41,8 +41,9 @@ export class CatalogChatProvider implements vscode.LanguageModelChatProvider, vs
 	 * The options the host resolved from the manifest's `configuration` schema, which is where the
 	 * API key lives.
 	 *
-	 * Only {@link provideLanguageModelChatInformation} receives them, so they are cached here for the
-	 * requests that follow.
+	 * Only {@link provideLanguageModelChatInformation} receives them, so the last set is kept here for
+	 * the requests that follow. A request cannot tell which group it belongs to, so a vendor the user
+	 * adds twice would key every request with whichever group resolved last.
 	 */
 	private configuration: Readonly<Record<string, unknown>> | undefined;
 
@@ -76,15 +77,7 @@ export class CatalogChatProvider implements vscode.LanguageModelChatProvider, vs
 			this.configuration = configuration;
 		}
 
-		if (credentialsOf(this.configuration) === undefined) {
-			// The provider stays in the Add Provider menu until the user adds it and supplies a key,
-			// because a model listed without one could not be used.
-			this.options.log.debug(`${this.options.vendor} has no API key, so it lists no models yet.`);
-
-			return [];
-		}
-
-		return this.options.models().map(toModelInformation);
+		return listableModels(configuration, this.options.models());
 	}
 
 	async provideLanguageModelChatResponse(
