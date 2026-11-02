@@ -97,7 +97,7 @@ export class CatalogChatProvider implements vscode.LanguageModelChatProvider, vs
 			);
 		}
 
-		const wireModel = toWireModel(neutral, {
+		const wireModel = toWireModel(neutral, this.options.vendor, {
 			apiKey,
 			baseUrl: readSetting(this.configuration, 'baseUrl') ?? neutral.baseUrl,
 		});
