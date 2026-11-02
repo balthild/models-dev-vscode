@@ -15,7 +15,6 @@ export function registerCommands(context: CommandContext): vscode.Disposable[] {
 	return [
 		vscode.commands.registerCommand('modelsdev.updateData', () => updateData(context)),
 		vscode.commands.registerCommand('modelsdev.showStatus', () => showStatus(context)),
-		vscode.commands.registerCommand('modelsdev.openSettings', () => openSettings()),
 	];
 }
 
@@ -59,10 +58,6 @@ async function showStatus({ store }: CommandContext): Promise<void> {
 	void vscode.window.showInformationMessage(
 		`Model data: ${describe(state.catalog)}, from the ${state.origin} (${age}).`,
 	);
-}
-
-function openSettings(): Thenable<unknown> {
-	return vscode.commands.executeCommand('workbench.action.openSettings', 'modelsdev');
 }
 
 function describe(catalog: Catalog): string {

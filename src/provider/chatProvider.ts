@@ -8,6 +8,7 @@ import * as vscode from 'vscode';
 import type { NeutralModel } from '#/catalog/derive.ts';
 import type { EffortChoice } from '#/catalog/reasoning.ts';
 
+import { credentialsOf } from './credentials.ts';
 import { toModelInformation } from './modelInfo.ts';
 import { reasoningMetadata, toThinkingLevel } from './reasoning.ts';
 import { toWireMessages, toWireTools } from './request.ts';
@@ -75,6 +76,14 @@ export class CatalogChatProvider implements vscode.LanguageModelChatProvider, vs
 			this.configuration = configuration;
 		}
 
+		if (credentialsOf(this.configuration) === undefined) {
+			// The provider stays in the Add Provider menu until the user adds it and supplies a key,
+			// because a model listed without one could not be used.
+			this.options.log.debug(`${this.options.vendor} has no API key, so it lists no models yet.`);
+
+			return [];
+		}
+
 		return this.options.models().map(toModelInformation);
 	}
 
@@ -90,21 +99,25 @@ export class CatalogChatProvider implements vscode.LanguageModelChatProvider, vs
 			throw new Error(`This model is no longer offered by ${this.options.vendor}.`);
 		}
 
-		const apiKey = readSetting(this.configuration, 'apiKey');
-		if (apiKey === undefined) {
+		const credentials = credentialsOf(this.configuration);
+		if (credentials === undefined) {
 			throw new Error(
-				`No API key is configured for ${this.options.vendor}. Add one from the model picker, or run "Models.dev: Open Provider Settings".`,
+				`No API key is configured for ${this.options.vendor}. Add it through Add Models in the model picker.`,
 			);
 		}
 
 		const wireModel = toWireModel(neutral, this.options.vendor, {
-			apiKey,
-			baseUrl: readSetting(this.configuration, 'baseUrl') ?? neutral.baseUrl,
+			apiKey: credentials.apiKey,
+			baseUrl: credentials.baseUrl ?? neutral.baseUrl,
 		});
 		const stream = this.modelsFor(this.options.vendor).streamSimple(
 			wireModel,
 			{ messages: toWireMessages(messages, neutral), tools: toWireTools(options.tools) },
-			{ apiKey, reasoning: toThinkingLevel(readEffort(options)), signal: toAbortSignal(token) },
+			{
+				apiKey: credentials.apiKey,
+				reasoning: toThinkingLevel(readEffort(options)),
+				signal: toAbortSignal(token),
+			},
 		);
 
 		for await (const event of stream) {
@@ -254,16 +267,6 @@ function reportUsage(
 			'usage',
 		),
 	);
-}
-
-/** Read a non-empty string out of the host-resolved provider configuration. */
-function readSetting(
-	configuration: Readonly<Record<string, unknown>> | undefined,
-	key: string,
-): string | undefined {
-	const value = configuration?.[key];
-
-	return typeof value === 'string' && value !== '' ? value : undefined;
 }
 
 /** Read the reasoning level the user picked, if the host reported one. */

@@ -34,7 +34,7 @@ async function main(): Promise<void> {
 	const providers: Record<string, CatalogProvider> = {};
 	const missing: string[] = [];
 
-	for (const { id } of SHIPPED_PROVIDERS) {
+	for (const id of SHIPPED_PROVIDERS) {
 		if (HARD_DISABLED_PROVIDERS.has(id)) {
 			continue;
 		}

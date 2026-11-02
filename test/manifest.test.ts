@@ -3,7 +3,6 @@ import { readFile } from 'node:fs/promises';
 import { describe, test } from 'node:test';
 
 import {
-	DEFAULT_ENABLED_PROVIDERS,
 	HARD_DISABLED_PROVIDERS,
 	isShippedProvider,
 	SHIPPED_PROVIDERS,
@@ -13,7 +12,7 @@ import type { Catalog } from '#/catalog/types.ts';
 const SNAPSHOT = new URL('../assets/catalog.snapshot.json', import.meta.url);
 
 /** The commands the extension registers, which the manifest has to declare. */
-const COMMANDS = ['modelsdev.updateData', 'modelsdev.showStatus', 'modelsdev.openSettings'];
+const COMMANDS = ['modelsdev.updateData', 'modelsdev.showStatus'];
 
 interface Manifest {
 	readonly activationEvents?: string[];
@@ -42,22 +41,14 @@ async function snapshot(): Promise<Catalog> {
 
 describe('shipped providers', () => {
 	test('are listed once each', () => {
-		const ids = SHIPPED_PROVIDERS.map((provider) => provider.id);
-
-		assert.deepEqual([...new Set(ids)], ids);
+		assert.deepEqual([...new Set(SHIPPED_PROVIDERS)], SHIPPED_PROVIDERS);
 	});
 
 	test('never include a provider VS Code serves itself', () => {
-		for (const { id } of SHIPPED_PROVIDERS) {
+		for (const id of SHIPPED_PROVIDERS) {
 			assert.equal(HARD_DISABLED_PROVIDERS.has(id), false, id);
-		}
-	});
-
-	test('cover every provider enabled by default', () => {
-		for (const id of DEFAULT_ENABLED_PROVIDERS) {
 			assert.equal(isShippedProvider(id), true, id);
 		}
-		assert.equal(DEFAULT_ENABLED_PROVIDERS.length > 0, true);
 	});
 });
 
@@ -65,7 +56,7 @@ describe('snapshot', () => {
 	test('covers every shipped provider', async () => {
 		const catalog = await snapshot();
 
-		for (const { id } of SHIPPED_PROVIDERS) {
+		for (const id of SHIPPED_PROVIDERS) {
 			assert.notEqual(catalog[id], undefined, id);
 		}
 	});
@@ -83,10 +74,7 @@ describe('manifest', () => {
 	test('declares exactly the shipped providers as vendors', async () => {
 		const declared = (await manifest()).contributes?.languageModelChatProviders ?? [];
 
-		assert.deepEqual(
-			declared.map((entry) => entry.vendor).sort(),
-			SHIPPED_PROVIDERS.map((provider) => provider.id).sort(),
-		);
+		assert.deepEqual(declared.map((entry) => entry.vendor).sort(), [...SHIPPED_PROVIDERS].sort());
 	});
 
 	test('asks the host for a secret API key per vendor', async () => {
@@ -106,10 +94,8 @@ describe('manifest', () => {
 		}
 	});
 
-	test('declares the setting that switches providers on', async () => {
-		const properties = (await manifest()).contributes?.configuration?.properties ?? {};
-
-		assert.equal('modelsdev.providers' in properties, true);
+	test('contributes no settings, so Add Provider is the only control point', async () => {
+		assert.equal((await manifest()).contributes?.configuration, undefined);
 	});
 
 	test('activates at startup, so the picker is populated early', async () => {

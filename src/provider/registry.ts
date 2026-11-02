@@ -11,8 +11,8 @@ import { CatalogChatProvider } from './chatProvider.ts';
  * Owns one chat provider per shipped vendor.
  *
  * Vendors cannot appear at runtime — the host reads them from the static manifest — so every
- * shipped provider is registered up front, and the setting only decides which of them report any
- * models.
+ * shipped provider is registered up front. Which of them offer any models is decided per provider,
+ * by whether the user has supplied a key.
  */
 export class ProviderRegistry implements vscode.Disposable {
 	private readonly store: CatalogStore;
@@ -20,7 +20,6 @@ export class ProviderRegistry implements vscode.Disposable {
 	private readonly providers = new Map<string, CatalogChatProvider>();
 	private readonly registrations: vscode.Disposable[] = [];
 	private readonly cache = new Map<string, readonly NeutralModel[]>();
-	private enabled: readonly string[] = [];
 
 	constructor(store: CatalogStore, log: vscode.LogOutputChannel) {
 		this.store = store;
@@ -29,7 +28,7 @@ export class ProviderRegistry implements vscode.Disposable {
 
 	/** Register every shipped vendor with the host. Call once, during activation. */
 	register(): void {
-		for (const { id } of SHIPPED_PROVIDERS) {
+		for (const id of SHIPPED_PROVIDERS) {
 			const provider = new CatalogChatProvider({
 				vendor: id,
 				models: () => this.modelsFor(id),
@@ -39,12 +38,6 @@ export class ProviderRegistry implements vscode.Disposable {
 			this.providers.set(id, provider);
 			this.registrations.push(vscode.lm.registerLanguageModelChatProvider(id, provider));
 		}
-	}
-
-	/** Change which vendors report models, and tell the host. */
-	setEnabled(ids: readonly string[]): void {
-		this.enabled = ids;
-		this.invalidate();
 	}
 
 	/** Discard derived models and tell the host to re-read them. */
@@ -78,10 +71,7 @@ export class ProviderRegistry implements vscode.Disposable {
 		}
 
 		const catalogProvider = this.store.current()?.catalog[id];
-		const models =
-			this.enabled.includes(id) && catalogProvider !== undefined
-				? deriveProviderModels(catalogProvider)
-				: [];
+		const models = catalogProvider === undefined ? [] : deriveProviderModels(catalogProvider);
 
 		this.cache.set(id, models);
 

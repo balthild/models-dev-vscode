@@ -41,142 +41,6 @@
 	"contributes": {
 		"languageModelChatProviders": [
 			{
-				"vendor": "cline-pass",
-				"displayName": "ClinePass",
-				"configuration": {
-					"properties": {
-						"apiKey": {
-							"type": "string",
-							"secret": true,
-							"description": "API key for ClinePass. Stored in VS Code's secret storage."
-						},
-						"baseUrl": {
-							"type": "string",
-							"description": "Endpoint to use instead of the one models.dev publishes for ClinePass. Leave empty for the default."
-						}
-					}
-				}
-			},
-			{
-				"vendor": "opencode-go",
-				"displayName": "OpenCode Go",
-				"configuration": {
-					"properties": {
-						"apiKey": {
-							"type": "string",
-							"secret": true,
-							"description": "API key for OpenCode Go. Stored in VS Code's secret storage."
-						},
-						"baseUrl": {
-							"type": "string",
-							"description": "Endpoint to use instead of the one models.dev publishes for OpenCode Go. Leave empty for the default."
-						}
-					}
-				}
-			},
-			{
-				"vendor": "deepseek",
-				"displayName": "DeepSeek",
-				"configuration": {
-					"properties": {
-						"apiKey": {
-							"type": "string",
-							"secret": true,
-							"description": "API key for DeepSeek. Stored in VS Code's secret storage."
-						},
-						"baseUrl": {
-							"type": "string",
-							"description": "Endpoint to use instead of the one models.dev publishes for DeepSeek. Leave empty for the default."
-						}
-					}
-				}
-			},
-			{
-				"vendor": "moonshotai",
-				"displayName": "Moonshot AI",
-				"configuration": {
-					"properties": {
-						"apiKey": {
-							"type": "string",
-							"secret": true,
-							"description": "API key for Moonshot AI. Stored in VS Code's secret storage."
-						},
-						"baseUrl": {
-							"type": "string",
-							"description": "Endpoint to use instead of the one models.dev publishes for Moonshot AI. Leave empty for the default."
-						}
-					}
-				}
-			},
-			{
-				"vendor": "zai",
-				"displayName": "Z.AI",
-				"configuration": {
-					"properties": {
-						"apiKey": {
-							"type": "string",
-							"secret": true,
-							"description": "API key for Z.AI. Stored in VS Code's secret storage."
-						},
-						"baseUrl": {
-							"type": "string",
-							"description": "Endpoint to use instead of the one models.dev publishes for Z.AI. Leave empty for the default."
-						}
-					}
-				}
-			},
-			{
-				"vendor": "zhipuai",
-				"displayName": "Zhipu AI",
-				"configuration": {
-					"properties": {
-						"apiKey": {
-							"type": "string",
-							"secret": true,
-							"description": "API key for Zhipu AI. Stored in VS Code's secret storage."
-						},
-						"baseUrl": {
-							"type": "string",
-							"description": "Endpoint to use instead of the one models.dev publishes for Zhipu AI. Leave empty for the default."
-						}
-					}
-				}
-			},
-			{
-				"vendor": "alibaba",
-				"displayName": "Alibaba",
-				"configuration": {
-					"properties": {
-						"apiKey": {
-							"type": "string",
-							"secret": true,
-							"description": "API key for Alibaba. Stored in VS Code's secret storage."
-						},
-						"baseUrl": {
-							"type": "string",
-							"description": "Endpoint to use instead of the one models.dev publishes for Alibaba. Leave empty for the default."
-						}
-					}
-				}
-			},
-			{
-				"vendor": "minimax",
-				"displayName": "MiniMax (minimax.io)",
-				"configuration": {
-					"properties": {
-						"apiKey": {
-							"type": "string",
-							"secret": true,
-							"description": "API key for MiniMax (minimax.io). Stored in VS Code's secret storage."
-						},
-						"baseUrl": {
-							"type": "string",
-							"description": "Endpoint to use instead of the one models.dev publishes for MiniMax (minimax.io). Leave empty for the default."
-						}
-					}
-				}
-			},
-			{
 				"vendor": "302ai",
 				"displayName": "302.AI",
 				"configuration": {
@@ -206,6 +70,23 @@
 						"baseUrl": {
 							"type": "string",
 							"description": "Endpoint to use instead of the one models.dev publishes for AI21 Labs. Leave empty for the default."
+						}
+					}
+				}
+			},
+			{
+				"vendor": "alibaba",
+				"displayName": "Alibaba",
+				"configuration": {
+					"properties": {
+						"apiKey": {
+							"type": "string",
+							"secret": true,
+							"description": "API key for Alibaba. Stored in VS Code's secret storage."
+						},
+						"baseUrl": {
+							"type": "string",
+							"description": "Endpoint to use instead of the one models.dev publishes for Alibaba. Leave empty for the default."
 						}
 					}
 				}
@@ -245,6 +126,23 @@
 				}
 			},
 			{
+				"vendor": "cline-pass",
+				"displayName": "ClinePass",
+				"configuration": {
+					"properties": {
+						"apiKey": {
+							"type": "string",
+							"secret": true,
+							"description": "API key for ClinePass. Stored in VS Code's secret storage."
+						},
+						"baseUrl": {
+							"type": "string",
+							"description": "Endpoint to use instead of the one models.dev publishes for ClinePass. Leave empty for the default."
+						}
+					}
+				}
+			},
+			{
 				"vendor": "cloudflare-workers-ai",
 				"displayName": "Cloudflare Workers AI",
 				"configuration": {
@@ -274,6 +172,23 @@
 						"baseUrl": {
 							"type": "string",
 							"description": "Endpoint to use instead of the one models.dev publishes for Databricks. Leave empty for the default."
+						}
+					}
+				}
+			},
+			{
+				"vendor": "deepseek",
+				"displayName": "DeepSeek",
+				"configuration": {
+					"properties": {
+						"apiKey": {
+							"type": "string",
+							"secret": true,
+							"description": "API key for DeepSeek. Stored in VS Code's secret storage."
+						},
+						"baseUrl": {
+							"type": "string",
+							"description": "Endpoint to use instead of the one models.dev publishes for DeepSeek. Leave empty for the default."
 						}
 					}
 				}
@@ -364,6 +279,40 @@
 				}
 			},
 			{
+				"vendor": "minimax",
+				"displayName": "MiniMax (minimax.io)",
+				"configuration": {
+					"properties": {
+						"apiKey": {
+							"type": "string",
+							"secret": true,
+							"description": "API key for MiniMax (minimax.io). Stored in VS Code's secret storage."
+						},
+						"baseUrl": {
+							"type": "string",
+							"description": "Endpoint to use instead of the one models.dev publishes for MiniMax (minimax.io). Leave empty for the default."
+						}
+					}
+				}
+			},
+			{
+				"vendor": "moonshotai",
+				"displayName": "Moonshot AI",
+				"configuration": {
+					"properties": {
+						"apiKey": {
+							"type": "string",
+							"secret": true,
+							"description": "API key for Moonshot AI. Stored in VS Code's secret storage."
+						},
+						"baseUrl": {
+							"type": "string",
+							"description": "Endpoint to use instead of the one models.dev publishes for Moonshot AI. Leave empty for the default."
+						}
+					}
+				}
+			},
+			{
 				"vendor": "morph",
 				"displayName": "Morph",
 				"configuration": {
@@ -444,6 +393,23 @@
 						"baseUrl": {
 							"type": "string",
 							"description": "Endpoint to use instead of the one models.dev publishes for OpenCode. Leave empty for the default."
+						}
+					}
+				}
+			},
+			{
+				"vendor": "opencode-go",
+				"displayName": "OpenCode Go",
+				"configuration": {
+					"properties": {
+						"apiKey": {
+							"type": "string",
+							"secret": true,
+							"description": "API key for OpenCode Go. Stored in VS Code's secret storage."
+						},
+						"baseUrl": {
+							"type": "string",
+							"description": "Endpoint to use instead of the one models.dev publishes for OpenCode Go. Leave empty for the default."
 						}
 					}
 				}
@@ -583,6 +549,40 @@
 						}
 					}
 				}
+			},
+			{
+				"vendor": "zai",
+				"displayName": "Z.AI",
+				"configuration": {
+					"properties": {
+						"apiKey": {
+							"type": "string",
+							"secret": true,
+							"description": "API key for Z.AI. Stored in VS Code's secret storage."
+						},
+						"baseUrl": {
+							"type": "string",
+							"description": "Endpoint to use instead of the one models.dev publishes for Z.AI. Leave empty for the default."
+						}
+					}
+				}
+			},
+			{
+				"vendor": "zhipuai",
+				"displayName": "Zhipu AI",
+				"configuration": {
+					"properties": {
+						"apiKey": {
+							"type": "string",
+							"secret": true,
+							"description": "API key for Zhipu AI. Stored in VS Code's secret storage."
+						},
+						"baseUrl": {
+							"type": "string",
+							"description": "Endpoint to use instead of the one models.dev publishes for Zhipu AI. Leave empty for the default."
+						}
+					}
+				}
 			}
 		],
 		"commands": [
@@ -595,35 +595,8 @@
 				"command": "modelsdev.showStatus",
 				"title": "Show Model Data Status",
 				"category": "Models.dev"
-			},
-			{
-				"command": "modelsdev.openSettings",
-				"title": "Open Provider Settings",
-				"category": "Models.dev"
 			}
-		],
-		"configuration": {
-			"title": "Models.dev",
-			"properties": {
-				"modelsdev.providers": {
-					"type": "array",
-					"items": {
-						"type": "string"
-					},
-					"default": [
-						"cline-pass",
-						"opencode-go",
-						"deepseek",
-						"moonshotai",
-						"zai",
-						"zhipuai",
-						"alibaba",
-						"minimax"
-					],
-					"markdownDescription": "Providers to offer in the model picker. Providers VS Code already serves are always excluded."
-				}
-			}
-		}
+		]
 	},
 	"activationEvents": [
 		"onStartupFinished"

@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 
 import { CatalogStore } from './catalog/store.ts';
 import { registerCommands } from './commands.ts';
-import { enabledProviders, onDidChangeProviders } from './config/settings.ts';
 import { ProviderRegistry } from './provider/registry.ts';
 import { loadTokenizer } from './provider/tokenCount.ts';
 import { messageOf } from './util/errors.ts';
@@ -48,10 +47,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		return;
 	}
 
-	registry.setEnabled(enabledProviders());
 	registry.register();
 
-	context.subscriptions.push(onDidChangeProviders(() => registry.setEnabled(enabledProviders())));
 	context.subscriptions.push(new vscode.Disposable(store.onDidChange(() => registry.invalidate())));
 	context.subscriptions.push(...registerCommands({ store, registry, log }));
 

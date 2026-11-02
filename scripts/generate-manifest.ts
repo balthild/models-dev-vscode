@@ -11,11 +11,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
-import {
-	DEFAULT_ENABLED_PROVIDERS,
-	HARD_DISABLED_PROVIDERS,
-	SHIPPED_PROVIDERS,
-} from '#/catalog/providers.ts';
+import { HARD_DISABLED_PROVIDERS, SHIPPED_PROVIDERS } from '#/catalog/providers.ts';
 import type { Catalog } from '#/catalog/types.ts';
 
 const PACKAGE_PATH = fileURLToPath(new URL('../package.json', import.meta.url));
@@ -33,12 +29,10 @@ async function main(): Promise<void> {
 	const pkg = JSON.parse(await readFile(PACKAGE_PATH, 'utf8')) as Record<string, unknown>;
 	const catalog = JSON.parse(await readFile(SNAPSHOT_PATH, 'utf8')) as Catalog;
 
-	const providers = SHIPPED_PROVIDERS.filter(({ id }) => !HARD_DISABLED_PROVIDERS.has(id));
+	const providers = SHIPPED_PROVIDERS.filter((id) => !HARD_DISABLED_PROVIDERS.has(id));
 	pkg['activationEvents'] = ['onStartupFinished'];
 	pkg['contributes'] = {
-		languageModelChatProviders: providers.map(({ id }) =>
-			contribution(id, displayName(catalog, id)),
-		),
+		languageModelChatProviders: providers.map((id) => contribution(id, displayName(catalog, id))),
 		commands: [
 			{
 				command: 'modelsdev.updateData',
@@ -50,24 +44,7 @@ async function main(): Promise<void> {
 				title: 'Show Model Data Status',
 				category: COMMAND_CATEGORY,
 			},
-			{
-				command: 'modelsdev.openSettings',
-				title: 'Open Provider Settings',
-				category: COMMAND_CATEGORY,
-			},
 		],
-		configuration: {
-			title: 'Models.dev',
-			properties: {
-				'modelsdev.providers': {
-					type: 'array',
-					items: { type: 'string' },
-					default: DEFAULT_ENABLED_PROVIDERS,
-					markdownDescription:
-						'Providers to offer in the model picker. Providers VS Code already serves are always excluded.',
-				},
-			},
-		},
 	};
 
 	const json = `${JSON.stringify(pkg, null, '\t')}\n`;
