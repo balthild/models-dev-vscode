@@ -5,7 +5,26 @@ import {
 	REASONING_METADATA,
 	reasoningMetadata,
 	thinkingFromMetadata,
+	toThinkingLevel,
 } from '#/provider/reasoning.ts';
+
+describe('toThinkingLevel', () => {
+	test('names the level a graded effort asks for', () => {
+		assert.equal(toThinkingLevel('high'), 'high');
+		assert.equal(toThinkingLevel('minimal'), 'minimal');
+		assert.equal(toThinkingLevel('max'), 'max');
+	});
+
+	test('turns an off switch into an absent level', () => {
+		// The library reads absence as "off"; naming a level would turn reasoning on instead.
+		assert.equal(toThinkingLevel('disabled'), undefined);
+		assert.equal(toThinkingLevel(undefined), undefined);
+	});
+
+	test('names a level for "thinking", which is not itself a level', () => {
+		assert.equal(toThinkingLevel('enabled'), 'medium');
+	});
+});
 
 describe('reasoningMetadata', () => {
 	test('carries the text and the opaque state', () => {

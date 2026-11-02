@@ -9,7 +9,7 @@ import type { NeutralModel } from '#/catalog/derive.ts';
 import type { EffortChoice } from '#/catalog/reasoning.ts';
 
 import { toModelInformation } from './modelInfo.ts';
-import { reasoningMetadata } from './reasoning.ts';
+import { reasoningMetadata, toThinkingLevel } from './reasoning.ts';
 import { toWireMessages, toWireTools } from './request.ts';
 import { thinkingPartConstructor } from './thinking.ts';
 import { countTokens } from './tokenCount.ts';
@@ -169,19 +169,6 @@ function toAbortSignal(token: vscode.CancellationToken): AbortSignal {
 	token.onCancellationRequested(() => controller.abort());
 
 	return controller.signal;
-}
-
-/**
- * Map the picked effort onto the library's levels.
- *
- * `disabled` is not one of them: the library's neutral option type names only real levels, and
- * turning reasoning off is expressed by leaving the level unset so the provider applies its own
- * default. That is a deliberate loss of control until a working way to force it off is verified.
- */
-function toThinkingLevel(
-	choice: EffortChoice | undefined,
-): 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined {
-	return choice === undefined || choice === 'disabled' || choice === 'enabled' ? undefined : choice;
 }
 
 function report(

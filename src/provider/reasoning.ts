@@ -1,4 +1,6 @@
-import type { ThinkingContent } from '@earendil-works/pi-ai';
+import type { ThinkingContent, ThinkingLevel } from '@earendil-works/pi-ai';
+
+import type { EffortChoice } from '#/catalog/reasoning.ts';
 
 /**
  * The `LanguageModelThinkingPart.metadata` keys that carry replay state.
@@ -11,6 +13,27 @@ export const REASONING_METADATA = {
 	complete: '_completeThinking',
 	redacted: 'redactedData',
 } as const;
+
+/**
+ * Map the effort the user picked onto the level a request asks for.
+ *
+ * `'disabled'` becomes an absent level on purpose: the library reads absence as "off". The
+ * Anthropic adapter answers it with `thinking: { type: 'disabled' }`, and the OpenAI-compatible
+ * formats answer it with their own off switch. Naming a level instead is not an option, because the
+ * request vocabulary has no off value — and one designed to be absent, since the Anthropic adapter
+ * tests the level for truthiness and would read a present one as "reason".
+ *
+ * `'enabled'` therefore has to name a level, because a present level is what turns reasoning on.
+ * Only models with no graded efforts offer it, so any level is within what they accept; `medium` is
+ * a middle the library snaps to the nearest level a model does support.
+ */
+export function toThinkingLevel(choice: EffortChoice | undefined): ThinkingLevel | undefined {
+	if (choice === undefined || choice === 'disabled') {
+		return undefined;
+	}
+
+	return choice === 'enabled' ? 'medium' : choice;
+}
 
 /** What a reasoning block needs to be replayed on a later turn. */
 export type ReplayableThinking = Pick<
