@@ -30,7 +30,6 @@
 		"check": "tsc -p . && run fmt:check",
 		"test": "node --import ./test/vscode-hook.ts --test 'test/**/*.test.ts'",
 		"snapshot": "node scripts/generate-snapshot.ts",
-		"manifest": "node scripts/generate-manifest.ts",
 		"ranks": "node scripts/fetch-ranks.ts",
 		"lint": "oxlint",
 		"lint:fix": "oxlint --fix",
