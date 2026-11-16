@@ -154,10 +154,9 @@ function toWireToolResults(
 
 		const content: (TextContent | ImageContent)[] = [];
 		for (const item of part.content) {
-			if (item instanceof vscode.LanguageModelTextPart) {
-				content.push({ type: 'text', text: item.value });
-			} else if (isImagePart(item)) {
-				content.push(toImageContent(item));
+			const piece = toToolResultContent(item);
+			if (piece !== undefined) {
+				content.push(piece);
 			}
 		}
 
@@ -173,6 +172,69 @@ function toWireToolResults(
 		];
 	});
 }
+
+/**
+ * One piece of a tool's output, as something a chat protocol can carry.
+ *
+ * A tool result is where content the protocol has no shape for actually turns up. Only text can be
+ * sent and read back by any of these providers, so a prompt-TSX part is serialized and any other
+ * payload is read as UTF-8 — none of it is dropped, which is what a bare text-only reading of the
+ * parts would do. This is the same treatment the host gives the same parts when it builds a request
+ * for its own providers.
+ *
+ * @returns `undefined` for a part nothing can be made of, which the caller skips.
+ */
+function toToolResultContent(item: unknown): TextContent | ImageContent | undefined {
+	if (item instanceof vscode.LanguageModelTextPart) {
+		return { type: 'text', text: item.value };
+	}
+
+	if (isImagePart(item)) {
+		return toImageContent(item);
+	}
+
+	if (item instanceof vscode.LanguageModelPromptTsxPart) {
+		return { type: 'text', text: renderPromptTsx(item.value) };
+	}
+
+	if (item instanceof vscode.LanguageModelDataPart) {
+		return { type: 'text', text: decodeDataPart(item) };
+	}
+
+	return undefined;
+}
+
+/**
+ * The value of a prompt-TSX part as JSON, which is what the host sends.
+ *
+ * The part holds the result of `renderElementJSON`, so its own shape is JSON already; only a value
+ * that cannot be serialized at all (a cycle, or a function) needs the placeholder, and paying the
+ * tool call an answer matters more than failing the turn over its output.
+ */
+function renderPromptTsx(value: unknown): string {
+	try {
+		return JSON.stringify(value, null, 2) ?? PROMPT_TSX_PLACEHOLDER;
+	} catch {
+		return PROMPT_TSX_PLACEHOLDER;
+	}
+}
+
+/**
+ * The payload of a data part that is not an image, as text.
+ *
+ * Decoded rather than dropped: a tool that sends JSON or a log as bytes is sending text, and a
+ * provider that can read text loses the output entirely if it is discarded.
+ */
+function decodeDataPart(part: vscode.LanguageModelDataPart): string {
+	try {
+		return new TextDecoder().decode(part.data);
+	} catch {
+		return `<decode error: ${part.data.length} bytes>`;
+	}
+}
+
+/** Stands in for a prompt-TSX value that will not serialize. */
+const PROMPT_TSX_PLACEHOLDER = '[PromptTsxPart]';
 
 function textOf(parts: vscode.LanguageModelChatRequestMessage['content']): string {
 	return parts

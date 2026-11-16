@@ -58,6 +58,15 @@ export class LanguageModelToolResultPart {
 	}
 }
 
+/** The result of `renderElementJSON` from `@vscode/prompt-tsx`, as an opaque value. */
+export class LanguageModelPromptTsxPart {
+	readonly value: unknown;
+
+	constructor(value: unknown) {
+		this.value = value;
+	}
+}
+
 export class LanguageModelThinkingPart {
 	readonly value: string;
 	readonly id: string | undefined;

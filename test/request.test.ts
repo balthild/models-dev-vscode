@@ -147,6 +147,78 @@ describe('toWireMessages', () => {
 		);
 	});
 
+	test('sends a tool result that is only a prompt-TSX part, as JSON', () => {
+		// A tool result is where a part with no protocol shape actually turns up. Dropping it would
+		// lose the tool's output, which is why the host serializes it for its own providers too.
+		const value = { type: 'element', children: [{ type: 'text', text: 'the answer' }] };
+		const messages = wire([
+			assistant([new vscode.LanguageModelToolCallPart('call_1', 'edit_file', {})]),
+			user([
+				new vscode.LanguageModelToolResultPart('call_1', [
+					new vscode.LanguageModelPromptTsxPart(value),
+				]),
+			]),
+		]);
+
+		const result = messages.find((entry) => entry.role === 'toolResult');
+		const content = result?.role === 'toolResult' ? result.content : undefined;
+
+		assert.equal(content?.length, 1);
+		assert.deepEqual(content?.[0], { type: 'text', text: JSON.stringify(value, null, 2) });
+	});
+
+	test('stands in for a prompt-TSX value that will not serialize', () => {
+		const cyclic: Record<string, unknown> = {};
+		cyclic['self'] = cyclic;
+
+		const messages = wire([
+			user([
+				new vscode.LanguageModelToolResultPart('call_1', [
+					new vscode.LanguageModelPromptTsxPart(cyclic),
+				]),
+			]),
+		]);
+
+		const result = messages.find((entry) => entry.role === 'toolResult');
+
+		assert.deepEqual(result?.role === 'toolResult' ? result.content : undefined, [
+			{ type: 'text', text: '[PromptTsxPart]' },
+		]);
+	});
+
+	test('reads a payload that is not an image as text', () => {
+		const json = new TextEncoder().encode('{"rows":3}');
+		const messages = wire([
+			user([
+				new vscode.LanguageModelToolResultPart('call_1', [
+					new vscode.LanguageModelDataPart(json, 'application/json'),
+				]),
+			]),
+		]);
+
+		const result = messages.find((entry) => entry.role === 'toolResult');
+
+		assert.deepEqual(result?.role === 'toolResult' ? result.content : undefined, [
+			{ type: 'text', text: '{"rows":3}' },
+		]);
+	});
+
+	test('keeps an image in a tool result as an image', () => {
+		const messages = wire([
+			user([
+				new vscode.LanguageModelToolResultPart('call_1', [
+					new vscode.LanguageModelDataPart(new Uint8Array([1, 2, 3]), 'image/png'),
+				]),
+			]),
+		]);
+
+		const result = messages.find((entry) => entry.role === 'toolResult');
+
+		assert.deepEqual(result?.role === 'toolResult' ? result.content : undefined, [
+			{ type: 'image', data: 'AQID', mimeType: 'image/png' },
+		]);
+	});
+
 	test('stamps the model on every replayed assistant turn', () => {
 		const messages = wire([assistant([new vscode.LanguageModelTextPart('hello')])]);
 		const [first] = messages;
