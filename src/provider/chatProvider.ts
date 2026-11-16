@@ -1,4 +1,4 @@
-import type { AssistantMessageEvent, ProviderStreams } from '@earendil-works/pi-ai';
+import type { AssistantMessageEvent, ProviderStreams, Usage } from '@earendil-works/pi-ai';
 import { createModels, createProvider } from '@earendil-works/pi-ai';
 import { anthropicMessagesApi } from '@earendil-works/pi-ai/api/anthropic-messages.lazy';
 import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completions.lazy';
@@ -279,21 +279,31 @@ function reportThinkingState(
 }
 
 function reportUsage(
-	usage: { input: number; output: number } | undefined,
+	usage: Usage,
 	progress: vscode.Progress<vscode.LanguageModelResponsePart>,
 ): void {
-	if (usage === undefined) {
-		return;
-	}
+	const prompt = promptTokens(usage);
 
 	progress.report(
 		new vscode.LanguageModelDataPart(
 			new TextEncoder().encode(
-				JSON.stringify({ prompt_tokens: usage.input, completion_tokens: usage.output }),
+				// Copilot Chat drops a usage part that has no `total_tokens`, and the context
+				// window then reads 0%.
+				JSON.stringify({
+					prompt_tokens: prompt,
+					completion_tokens: usage.output,
+					total_tokens: prompt + usage.output,
+					prompt_tokens_details: { cached_tokens: usage.cacheRead },
+				}),
 			),
 			'usage',
 		),
 	);
+}
+
+/** `usage.input` excludes cache hits, which the host counts as prompt. */
+function promptTokens(usage: Usage): number {
+	return usage.input + usage.cacheRead + usage.cacheWrite;
 }
 
 /** Read the reasoning level the user picked, if the host reported one. */

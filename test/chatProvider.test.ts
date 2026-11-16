@@ -280,6 +280,32 @@ describe('CatalogChatProvider', () => {
 		assert.equal(sent[0]?.body['reasoning_effort'], 'high');
 	});
 
+	test('reports usage the host can size the context window from', async () => {
+		const chat = provider();
+		const { restore } = interceptRequests();
+
+		let parts: vscode.LanguageModelResponsePart[];
+		try {
+			parts = await ask(chat, list(chat, { apiKey: 'key', baseUrl: 'https://one.test/v1' })[0]!);
+		} finally {
+			restore();
+		}
+
+		const usage = parts.filter(
+			(part): part is vscode.LanguageModelDataPart =>
+				part instanceof vscode.LanguageModelDataPart && part.mimeType === 'usage',
+		);
+
+		assert.equal(usage.length, 1, 'exactly one usage part should be reported');
+		// Without `total_tokens` the whole part is dropped and the window reads 0%.
+		assert.deepEqual(JSON.parse(new TextDecoder().decode(usage[0]!.data)), {
+			prompt_tokens: 3,
+			completion_tokens: 1,
+			total_tokens: 4,
+			prompt_tokens_details: { cached_tokens: 0 },
+		});
+	});
+
 	test('reports a streamed tool call with its arguments whole', async () => {
 		const chat = provider();
 		const { restore } = interceptRequests(TOOL_CALL_STREAM);
