@@ -8,6 +8,7 @@
 		"AI",
 		"Other"
 	],
+	"repository": "https://github.com/balthild/models-dev-vscode",
 	"license": "GPL-3.0-only",
 	"publisher": "balthild",
 	"type": "module",
@@ -37,7 +38,7 @@
 		"fmt:check": "dprint check --list-different || echo Some files are not formatted.",
 		"vscode:prepublish": "run check && run lint && run clean && run build:prod",
 		"release": "release-it",
-		"package": "vsce package"
+		"package": "vsce package --no-dependencies"
 	},
 	"contributes": {
 		"languageModelChatProviders": [
