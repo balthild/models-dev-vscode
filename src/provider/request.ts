@@ -25,44 +25,72 @@ export function toWireTools(tools: readonly vscode.LanguageModelChatTool[] | und
 /**
  * Convert the host's conversation into the provider library's messages.
  *
- * @param model The model the request is for. The library only replays reasoning for messages whose
- *   recorded model still matches, and the host does not say which model produced each past turn, so
- *   the current model is stamped on every one.
+ * Two things the host's vocabulary does not carry across on its own are handled here. Reasoning is
+ * replayed only for messages whose recorded model still matches, and the host does not say which
+ * model produced each past turn, so the current model is stamped on every one. And a tool result
+ * names only the call it answers — the tool's own name is on that call, in an earlier message — so
+ * the names are collected from the calls as the conversation is walked.
+ *
+ * @param model The model the request is for.
  */
 export function toWireMessages(
 	messages: readonly vscode.LanguageModelChatRequestMessage[],
 	model: NeutralModel,
 ): Message[] {
-	return messages.flatMap((message) => [
-		...toWireMessage(message, model),
-		...toWireToolResults(message),
-	]);
+	const wire: Message[] = [];
+	const toolNames = new Map<string, string>();
+
+	for (const message of messages) {
+		for (const part of message.content) {
+			if (part instanceof vscode.LanguageModelToolCallPart) {
+				toolNames.set(part.callId, part.name);
+			}
+		}
+
+		const own = toWireMessage(message, model);
+		if (own !== undefined) {
+			wire.push(own);
+		}
+
+		wire.push(...toWireToolResults(message, toolNames));
+	}
+
+	return wire;
 }
 
+/**
+ * A message's own content, or `undefined` when it has none the provider could read.
+ *
+ * A tool result can only appear in a user message, so a turn carrying nothing but results is
+ * ordinary: it has no text and no image of its own, and what it does carry is sent as the tool
+ * results that follow. Emitting it empty would fail the whole request — `user message must have
+ * content`.
+ */
 function toWireMessage(
 	message: vscode.LanguageModelChatRequestMessage,
 	model: NeutralModel,
-): Message[] {
-	if (message.role === vscode.LanguageModelChatMessageRole.User) {
-		const images = message.content.filter(isImagePart);
-		const text = textOf(message.content);
-
-		return [
-			{
-				role: 'user',
-				content:
-					images.length === 0
-						? text
-						: [
-								...(text === '' ? [] : [{ type: 'text' as const, text }]),
-								...images.map(toImageContent),
-							],
-				timestamp: Date.now(),
-			},
-		];
+): Message | undefined {
+	if (message.role !== vscode.LanguageModelChatMessageRole.User) {
+		return assistantMessage(message.content, model);
 	}
 
-	return [assistantMessage(message.content, model)];
+	const images = message.content.filter(isImagePart);
+	const text = textOf(message.content);
+	if (text === '' && images.length === 0) {
+		return undefined;
+	}
+
+	return {
+		role: 'user',
+		content:
+			images.length === 0
+				? text
+				: [
+						...(text === '' ? [] : [{ type: 'text' as const, text }]),
+						...images.map(toImageContent),
+					],
+		timestamp: Date.now(),
+	};
 }
 
 function assistantMessage(
@@ -108,21 +136,17 @@ function assistantMessage(
 }
 
 /**
- * Tool results, which the host delivers as parts of the assistant turn that asked for them.
+ * Tool results, which the host delivers as content of a user message.
  *
- * The library carries the tool's name on the result, but the host does not repeat it there, so it
- * is taken from the matching call in the same turn.
+ * The library carries the tool's name on the result; the host does not, and the call the result
+ * answers is in an earlier message, so the name is looked up among the calls seen so far. A gateway
+ * needing the name is told it through the model's `compat`, and the name is the only thing that can
+ * supply it.
  */
-function toWireToolResults(message: vscode.LanguageModelChatRequestMessage): Message[] {
-	const names = new Map(
-		message.content
-			.filter(
-				(part): part is vscode.LanguageModelToolCallPart =>
-					part instanceof vscode.LanguageModelToolCallPart,
-			)
-			.map((call) => [call.callId, call.name]),
-	);
-
+function toWireToolResults(
+	message: vscode.LanguageModelChatRequestMessage,
+	names: ReadonlyMap<string, string>,
+): Message[] {
 	return message.content.flatMap((part): Message[] => {
 		if (!(part instanceof vscode.LanguageModelToolResultPart)) {
 			return [];
