@@ -17,8 +17,8 @@
 	},
 	"main": "./dist/extension.js",
 	"files": [
-		"./dist",
-		"./assets",
+		"dist",
+		"assets",
 		"README.md"
 	],
 	"scripts": {
