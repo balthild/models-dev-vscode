@@ -80,6 +80,29 @@ describe('toWireMessages', () => {
 		);
 	});
 
+	/**
+	 * The case seen in the wild, taken from a stored session: a tool that produced no output is kept
+	 * as `{ callId: { content: [] } }`, which the host turns into a user message whose only part is
+	 * that empty result. Emitting the wrapper empty failed the whole request.
+	 */
+	test('still answers a tool call whose result is empty', () => {
+		const messages = wire([
+			assistant([new vscode.LanguageModelToolCallPart('call_1', 'edit_file', {})]),
+			user([new vscode.LanguageModelToolResultPart('call_1', [])]),
+		]);
+
+		assert.deepEqual(
+			messages.map((entry) => entry.role),
+			['assistant', 'toolResult'],
+		);
+
+		const result = messages[1];
+
+		// Kept, so the call is answered — the library substitutes its own placeholder for the empty
+		// content.
+		assert.deepEqual(result?.role === 'toolResult' ? result.content : undefined, []);
+	});
+
 	test('takes the tool name from the call that asked for the result', () => {
 		const messages = wire([
 			assistant([new vscode.LanguageModelToolCallPart('call_1', 'read_file', { path: 'a.ts' })]),
