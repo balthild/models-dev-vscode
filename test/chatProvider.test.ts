@@ -8,6 +8,7 @@ import type { EffortChoice } from '#/catalog/reasoning.ts';
 import { CatalogChatProvider } from '#/provider/chatProvider.ts';
 
 const VENDOR = 'example';
+const PROVIDER_ID = 'example-provider';
 
 const MODEL: NeutralModel = {
 	id: 'example-model',
@@ -132,7 +133,11 @@ function chunk(delta: Record<string, unknown>, finishReason: string | null = nul
 }
 
 function provider(): CatalogChatProvider {
-	return new CatalogChatProvider({ vendor: VENDOR, models: () => [MODEL], log: silentLog() });
+	return new CatalogChatProvider({
+		vendor: VENDOR,
+		models: (providerId) => (providerId === PROVIDER_ID ? [MODEL] : []),
+		log: silentLog(),
+	});
 }
 
 /** A log channel that keeps a test run quiet. */
@@ -209,15 +214,24 @@ function list(
 	return chat.provideLanguageModelChatInformation(listOptions(configuration));
 }
 
+/** The configuration the host resolves for a group the user added. */
+function group(overrides: Readonly<Record<string, unknown>> = {}): Record<string, unknown> {
+	return { provider: PROVIDER_ID, apiKey: 'key', ...overrides };
+}
+
 describe('CatalogChatProvider', () => {
-	test('lists nothing until a group has a key', () => {
+	test('lists nothing for a group that names no provider or holds no key', () => {
 		const chat = provider();
 
 		// The call the host makes first, for the models that belong to no group.
 		assert.deepEqual(list(chat), []);
 		assert.deepEqual(list(chat, {}), []);
-		assert.deepEqual(list(chat, { apiKey: '   ' }), []);
-		assert.equal(list(chat, { apiKey: 'key' }).length, 1);
+		assert.deepEqual(list(chat, { apiKey: 'key' }), []);
+		assert.deepEqual(list(chat, { provider: PROVIDER_ID }), []);
+		assert.deepEqual(list(chat, { provider: PROVIDER_ID, apiKey: '   ' }), []);
+		// A provider that is not in the catalog has no models to offer.
+		assert.deepEqual(list(chat, { provider: 'unknown', apiKey: 'key' }), []);
+		assert.equal(list(chat, group()).length, 1);
 	});
 
 	test('keys each group’s request with that group’s credentials', async () => {
@@ -225,8 +239,8 @@ describe('CatalogChatProvider', () => {
 		const { sent, restore } = interceptRequests();
 
 		try {
-			const first = list(chat, { apiKey: 'key-one', baseUrl: 'https://one.test/v1' });
-			const second = list(chat, { apiKey: 'key-two', baseUrl: 'https://two.test/v1' });
+			const first = list(chat, group({ apiKey: 'key-one', baseUrl: 'https://one.test/v1' }));
+			const second = list(chat, group({ apiKey: 'key-two', baseUrl: 'https://two.test/v1' }));
 
 			// Dispatched out of listing order on purpose: what decides the credentials is the model
 			// object the host hands back, not the order the groups were resolved in.
@@ -246,23 +260,21 @@ describe('CatalogChatProvider', () => {
 		);
 	});
 
-	test('falls back to the last listing for a model object it never returned', async () => {
+	test('refuses a model object it never listed, rather than guessing a key', async () => {
 		const chat = provider();
 		const { sent, restore } = interceptRequests();
 
 		try {
-			list(chat, { apiKey: 'key-one', baseUrl: 'https://one.test/v1' });
-			list(chat, { apiKey: 'key-two', baseUrl: 'https://two.test/v1' });
+			list(chat, group({ apiKey: 'key-one', baseUrl: 'https://one.test/v1' }));
+			list(chat, group({ apiKey: 'key-two', baseUrl: 'https://two.test/v1' }));
 
-			await ask(chat, unlistedModel());
+			// Another group's credentials would go to whatever endpoint this model names.
+			await assert.rejects(() => ask(chat, unlistedModel()));
 		} finally {
 			restore();
 		}
 
-		assert.deepEqual(
-			sent.map((request) => request.authorization),
-			['Bearer key-two'],
-		);
+		assert.deepEqual(sent, []);
 	});
 
 	test('carries the picked reasoning effort onto the request', async () => {
@@ -270,7 +282,7 @@ describe('CatalogChatProvider', () => {
 		const { sent, restore } = interceptRequests();
 
 		try {
-			const models = list(chat, { apiKey: 'key', baseUrl: 'https://one.test/v1' });
+			const models = list(chat, group({ baseUrl: 'https://one.test/v1' }));
 
 			await ask(chat, models[0]!, 'high');
 		} finally {
@@ -286,7 +298,7 @@ describe('CatalogChatProvider', () => {
 
 		let parts: vscode.LanguageModelResponsePart[];
 		try {
-			parts = await ask(chat, list(chat, { apiKey: 'key', baseUrl: 'https://one.test/v1' })[0]!);
+			parts = await ask(chat, list(chat, group({ baseUrl: 'https://one.test/v1' }))[0]!);
 		} finally {
 			restore();
 		}
@@ -312,7 +324,7 @@ describe('CatalogChatProvider', () => {
 
 		let parts: vscode.LanguageModelResponsePart[];
 		try {
-			parts = await ask(chat, list(chat, { apiKey: 'key', baseUrl: 'https://one.test/v1' })[0]!);
+			parts = await ask(chat, list(chat, group({ baseUrl: 'https://one.test/v1' }))[0]!);
 		} finally {
 			restore();
 		}

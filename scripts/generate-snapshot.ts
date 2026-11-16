@@ -2,17 +2,17 @@
  * Regenerates `assets/catalog.snapshot.json` from the live models.dev catalog.
  *
  * Run with `yarn snapshot`. The snapshot is the fallback the extension ships, so a fresh install
- * with no network still offers models instead of an empty picker.
+ * with no network still offers every provider instead of an empty picker.
  *
- * Providers the extension does not ship, and the fields it never reads, are dropped: the snapshot
- * is deliberately smaller than what models.dev publishes.
+ * Providers the extension cannot serve, and the fields it never reads, are dropped: the snapshot is
+ * deliberately smaller than what models.dev publishes.
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { parseCatalog } from '#/catalog/project.ts';
-import { HARD_DISABLED_PROVIDERS, SHIPPED_PROVIDERS } from '#/catalog/providers.ts';
+import { selectableProviders } from '#/catalog/providers.ts';
 import type { CatalogProvider } from '#/catalog/types.ts';
 
 const CATALOG_URL = 'https://models.dev/api.json';
@@ -32,20 +32,8 @@ async function main(): Promise<void> {
 	const available = parseCatalog(await response.text());
 
 	const providers: Record<string, CatalogProvider> = {};
-	const missing: string[] = [];
-
-	for (const id of SHIPPED_PROVIDERS) {
-		if (HARD_DISABLED_PROVIDERS.has(id)) {
-			continue;
-		}
-
-		const provider = available[id];
-		if (provider === undefined) {
-			missing.push(id);
-			continue;
-		}
-
-		providers[id] = provider;
+	for (const selectable of selectableProviders(available)) {
+		providers[selectable.id] = available[selectable.id];
 	}
 
 	const json = JSON.stringify(providers);
@@ -59,8 +47,4 @@ async function main(): Promise<void> {
 	console.log(
 		`snapshot: ${Object.keys(providers).length} providers, ${models} models, ${(json.length / 1024).toFixed(0)} KiB`,
 	);
-
-	if (missing.length > 0) {
-		console.log(`snapshot: not found in the catalog: ${missing.join(', ')}`);
-	}
 }

@@ -7,10 +7,11 @@ import * as vscode from 'vscode';
 
 import type { NeutralModel } from '#/catalog/derive.ts';
 import type { EffortChoice } from '#/catalog/reasoning.ts';
+import { COMMANDS } from '#/ids.ts';
 
 import type { Credentials } from './credentials.ts';
 import { credentialsOf } from './credentials.ts';
-import { listableModels } from './modelInfo.ts';
+import { toModelInformation } from './modelInfo.ts';
 import { reasoningMetadata, toThinkingLevel } from './reasoning.ts';
 import { toWireMessages, toWireTools } from './request.ts';
 import { thinkingPartConstructor } from './thinking.ts';
@@ -18,19 +19,25 @@ import { countTokens } from './tokenCount.ts';
 import { toWireModel } from './wireModel.ts';
 
 export interface ChatProviderOptions {
-	/** Catalog provider id, which doubles as the VS Code vendor id. */
+	/** Vendor id the host knows this provider by. */
 	readonly vendor: string;
-	/** Models currently served for this vendor. */
-	models(): readonly NeutralModel[];
+	/** Every model the named catalog provider offers, or none when it is not in the catalog. */
+	models(providerId: string): readonly NeutralModel[];
 	readonly log: vscode.LogOutputChannel;
+}
+
+/** What a request needs from the listing the model object came from. */
+interface ListedModel {
+	readonly model: NeutralModel;
+	readonly credentials: Credentials;
 }
 
 /**
  * Serves one catalog provider's models to the host.
  *
- * Credentials arrive from the provider's `configuration` contribution, which the host prompts for
- * and stores; nothing here asks for them itself. Building the request is the provider library's
- * business — this class only translates between the host's vocabulary and the library's.
+ * Credentials arrive from a group's `configuration`, which the host prompts for and stores; nothing
+ * here asks for them itself. Building the request is the provider library's business — this class
+ * only translates between the host's vocabulary and the library's.
  */
 export class CatalogChatProvider implements vscode.LanguageModelChatProvider, vscode.Disposable {
 	private readonly options: ChatProviderOptions;
@@ -39,19 +46,15 @@ export class CatalogChatProvider implements vscode.LanguageModelChatProvider, vs
 	private collection: ReturnType<typeof createModels> | undefined;
 
 	/**
-	 * The credentials behind every model this provider listed.
+	 * The listing each model object came from.
 	 *
 	 * A request names no group. The host builds the model names it shows and dispatches
 	 * (`vendor/<group>/<id>`) itself, and hands the provider neither the group nor that name; what it
 	 * does hand back is the very model object this provider returned for that group's listing. Object
 	 * identity is therefore the only per-group handle that survives from listing to dispatch, and it
-	 * answers the one question a request carries — which key belongs to this model. A vendor the user
-	 * adds twice keys each group's requests with its own credentials.
+	 * answers what a request needs — which upstream serves the model, and with which key.
 	 */
-	private readonly credentialsByModel = new WeakMap<object, Credentials>();
-
-	/** The last listing's credentials, for a request whose model object is not one of ours. */
-	private lastCredentials: Credentials | undefined;
+	private readonly listed = new WeakMap<object, ListedModel>();
 
 	/**
 	 * The host only re-reads a provider's models after this event fires, so it has to be present for
@@ -73,6 +76,17 @@ export class CatalogChatProvider implements vscode.LanguageModelChatProvider, vs
 		this.changes.fire();
 	}
 
+	/**
+	 * The models one group offers.
+	 *
+	 * A call that names no group must list nothing. The host asks twice: once with no configuration,
+	 * for models belonging to no group, and again per configured group. Answering the first call puts
+	 * a row in the picker that belongs to no group — it shows the vendor's name and cannot be
+	 * removed, because there is nothing to remove.
+	 *
+	 * The interactive form of that call is Add Models asking this provider to run its own flow: a
+	 * group needs a provider choice, which no manifest schema can offer.
+	 */
 	provideLanguageModelChatInformation(
 		options: vscode.PrepareLanguageModelChatModelOptions,
 	): vscode.LanguageModelChatInformation[] {
@@ -80,16 +94,22 @@ export class CatalogChatProvider implements vscode.LanguageModelChatProvider, vs
 		const configuration = (options as { configuration?: Readonly<Record<string, unknown>> })
 			.configuration;
 		const credentials = credentialsOf(configuration);
-		const models = listableModels(configuration, this.options.models());
 
-		if (credentials !== undefined) {
-			this.lastCredentials = credentials;
-			for (const model of models) {
-				this.credentialsByModel.set(model, credentials);
+		if (credentials === undefined) {
+			if (options.silent === false) {
+				void vscode.commands.executeCommand(COMMANDS.addProvider);
 			}
+
+			return [];
 		}
 
-		return models;
+		return this.options.models(credentials.provider).map((model) => {
+			const listed = toModelInformation(model);
+
+			this.listed.set(listed, { model, credentials });
+
+			return listed;
+		});
 	}
 
 	async provideLanguageModelChatResponse(
@@ -99,27 +119,25 @@ export class CatalogChatProvider implements vscode.LanguageModelChatProvider, vs
 		progress: vscode.Progress<vscode.LanguageModelResponsePart>,
 		token: vscode.CancellationToken,
 	): Promise<void> {
-		const neutral = this.options.models().find((candidate) => candidate.id === model.id);
-		if (neutral === undefined) {
-			throw new Error(`This model is no longer offered by ${this.options.vendor}.`);
-		}
-
-		const credentials = this.credentialsFor(model);
-		if (credentials === undefined) {
+		// Only a listed object carries the group it belongs to, and guessing one would mean sending
+		// another group's key to the wrong endpoint.
+		const listed = this.listed.get(model);
+		if (listed === undefined) {
 			throw new Error(
-				`No API key is configured for ${this.options.vendor}. Add it through Add Models in the model picker.`,
+				`This model is no longer offered. Add it again through Add Models in the model picker.`,
 			);
 		}
 
-		const wireModel = toWireModel(neutral, this.options.vendor, {
-			apiKey: credentials.apiKey,
-			baseUrl: credentials.baseUrl ?? neutral.baseUrl,
+		const wireModel = toWireModel(listed.model, this.options.vendor, {
+			apiKey: listed.credentials.apiKey,
+			baseUrl: listed.credentials.baseUrl ?? listed.model.baseUrl,
 		});
-		const stream = this.modelsFor(this.options.vendor).streamSimple(
+		this.collection ??= buildCollection(this.options.vendor);
+		const stream = this.collection.streamSimple(
 			wireModel,
-			{ messages: toWireMessages(messages, neutral), tools: toWireTools(options.tools) },
+			{ messages: toWireMessages(messages, listed.model), tools: toWireTools(options.tools) },
 			{
-				apiKey: credentials.apiKey,
+				apiKey: listed.credentials.apiKey,
 				reasoning: toThinkingLevel(readEffort(options)),
 				signal: toAbortSignal(token),
 			},
@@ -140,35 +158,6 @@ export class CatalogChatProvider implements vscode.LanguageModelChatProvider, vs
 		text: string | vscode.LanguageModelChatRequestMessage,
 	): Promise<number> {
 		return countTokens(text);
-	}
-
-	/**
-	 * The credentials for the listing a request belongs to.
-	 *
-	 * The fallback covers a model object that did not come from a listing. Nothing in the host's
-	 * model proxy does that today, but failing the request outright would be a worse outcome than
-	 * using the credentials resolved most recently.
-	 */
-	private credentialsFor(model: object): Credentials | undefined {
-		const listed = this.credentialsByModel.get(model);
-		if (listed !== undefined) {
-			return listed;
-		}
-
-		if (this.lastCredentials !== undefined) {
-			this.options.log.warn(
-				`[${this.options.vendor}] A request named a model this provider did not list. Falling back to the most recently resolved credentials.`,
-			);
-		}
-
-		return this.lastCredentials;
-	}
-
-	/** The provider collection for a vendor, built on first use. */
-	private modelsFor(vendor: string): ReturnType<typeof createModels> {
-		this.collection ??= buildCollection(vendor);
-
-		return this.collection;
 	}
 }
 

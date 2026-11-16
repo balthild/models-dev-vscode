@@ -1,26 +1,32 @@
+import { PROVIDER_SETTING } from '#/ids.ts';
+
 /**
- * What the user supplied for one provider, once they have added it.
+ * What the user supplied for one group, once they have added it.
  *
- * Kept free of `vscode` so the decision can be tested: whether a provider is usable is the
- * difference between listing its models and staying in the Add Provider menu.
+ * Kept free of `vscode` so the decision can be tested: whether a group is usable is the difference
+ * between listing its models and staying out of the picker.
  */
 export interface Credentials {
+	/** The models.dev provider this group serves. */
+	readonly provider: string;
 	readonly apiKey: string;
 	/** Endpoint override, for someone reaching a provider through a gateway. */
 	readonly baseUrl?: string;
 }
 
 /**
- * Read credentials out of the configuration the host resolved for a provider.
+ * Read credentials out of the configuration the host resolved for a group.
  *
- * @returns `undefined` when no key was supplied. The host only sends a configuration for a provider
- *   the user has added, which is what separates "configured" from "still in the menu".
+ * @returns `undefined` when the group names no provider or supplies no key. The host only sends a
+ *   configuration for a group the user has added, which is what separates "configured" from "still
+ *   in the menu".
  */
 export function credentialsOf(configuration: unknown): Credentials | undefined {
 	const settings = isRecord(configuration) ? configuration : {};
 
+	const provider = readSetting(settings, PROVIDER_SETTING);
 	const apiKey = readSetting(settings, 'apiKey');
-	if (apiKey === undefined) {
+	if (provider === undefined || apiKey === undefined) {
 		return undefined;
 	}
 
@@ -28,7 +34,9 @@ export function credentialsOf(configuration: unknown): Credentials | undefined {
 
 	// Trimmed because a pasted key picks up surrounding whitespace, which the provider would send
 	// as part of the credential.
-	return baseUrl === undefined ? { apiKey: apiKey.trim() } : { apiKey: apiKey.trim(), baseUrl };
+	return baseUrl === undefined
+		? { provider: provider.trim(), apiKey: apiKey.trim() }
+		: { provider: provider.trim(), apiKey: apiKey.trim(), baseUrl };
 }
 
 /** Read a non-empty string out of the host-resolved configuration. */

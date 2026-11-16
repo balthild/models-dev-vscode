@@ -1,21 +1,19 @@
 /**
- * Writes the generated parts of `package.json`: the provider contributions, the commands, the
- * settings and the activation event.
+ * Writes the generated parts of `package.json`: the provider contribution, the commands and the
+ * activation event.
  *
- * Run with `yarn manifest`. VS Code reads vendor ids from the static manifest, so a provider can
- * only reach Add Provider if it is listed here; the list is generated rather than typed so it
- * cannot drift from {@link SHIPPED_PROVIDERS}.
+ * Run with `yarn manifest`. VS Code reads vendor ids from the static manifest, so the vendor a
+ * provider is registered under can only come from here; what it serves is decided at runtime, which
+ * is what lets a provider models.dev adds later be usable without a release.
  *
  * `--check` reports whether the manifest is current instead of writing it, which is what CI uses.
  */
 import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
-import { HARD_DISABLED_PROVIDERS, SHIPPED_PROVIDERS } from '#/catalog/providers.ts';
-import type { Catalog } from '#/catalog/types.ts';
+import { COMMANDS, PROVIDER_SETTING, VENDOR_ID, VENDOR_NAME } from '#/ids.ts';
 
 const PACKAGE_PATH = fileURLToPath(new URL('../package.json', import.meta.url));
-const SNAPSHOT_PATH = fileURLToPath(new URL('../assets/catalog.snapshot.json', import.meta.url));
 
 const COMMAND_CATEGORY = 'Models.dev';
 
@@ -27,20 +25,23 @@ main().catch((error: unknown) => {
 async function main(): Promise<void> {
 	const check = process.argv.includes('--check');
 	const pkg = JSON.parse(await readFile(PACKAGE_PATH, 'utf8')) as Record<string, unknown>;
-	const catalog = JSON.parse(await readFile(SNAPSHOT_PATH, 'utf8')) as Catalog;
 
-	const providers = SHIPPED_PROVIDERS.filter((id) => !HARD_DISABLED_PROVIDERS.has(id));
 	pkg['activationEvents'] = ['onStartupFinished'];
 	pkg['contributes'] = {
-		languageModelChatProviders: providers.map((id) => contribution(id, displayName(catalog, id))),
+		languageModelChatProviders: [contribution()],
 		commands: [
 			{
-				command: 'modelsdev.updateData',
+				command: COMMANDS.addProvider,
+				title: 'Add Provider',
+				category: COMMAND_CATEGORY,
+			},
+			{
+				command: COMMANDS.updateData,
 				title: 'Update Model Data',
 				category: COMMAND_CATEGORY,
 			},
 			{
-				command: 'modelsdev.showStatus',
+				command: COMMANDS.showStatus,
 				title: 'Show Model Data Status',
 				category: COMMAND_CATEGORY,
 			},
@@ -59,29 +60,39 @@ async function main(): Promise<void> {
 	}
 
 	await writeFile(PACKAGE_PATH, json);
-	console.log(`manifest: ${providers.length} providers written to package.json`);
+	console.log(`manifest: ${VENDOR_NAME} written to package.json`);
 }
 
-function contribution(vendor: string, displayName: string): Record<string, unknown> {
+function contribution(): Record<string, unknown> {
 	return {
-		vendor,
-		displayName,
+		vendor: VENDOR_ID,
+		displayName: VENDOR_NAME,
+		// The host hands Add Models for this vendor to the provider instead of running its own
+		// wizard, which is the only way a group can ask for something a schema cannot offer.
+		managementCommand: COMMANDS.addProvider,
+		// Still declared, so the host's own wizard remains a way in if the management command is
+		// ever dropped.
 		configuration: {
+			type: 'object',
+			required: [PROVIDER_SETTING, 'apiKey'],
 			properties: {
+				[PROVIDER_SETTING]: {
+					type: 'string',
+					title: 'Provider',
+					description: `models.dev provider id, such as deepseek or commandcode. See https://models.dev.`,
+				},
 				apiKey: {
 					type: 'string',
+					title: 'API Key',
 					secret: true,
-					description: `API key for ${displayName}. Stored in VS Code's secret storage.`,
+					description: `API key for the provider. Stored in VS Code's secret storage.`,
 				},
 				baseUrl: {
 					type: 'string',
-					description: `Endpoint to use instead of the one models.dev publishes for ${displayName}. Leave empty for the default.`,
+					title: 'Base URL',
+					description: `Endpoint to use instead of the one models.dev publishes. Leave empty for the default.`,
 				},
 			},
 		},
 	};
-}
-
-function displayName(catalog: Catalog, id: string): string {
-	return catalog[id]?.name ?? id;
 }

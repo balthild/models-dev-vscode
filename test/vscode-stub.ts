@@ -79,6 +79,21 @@ export class LanguageModelThinkingPart {
 	}
 }
 
+/** Commands the extension invokes on the host, recorded so a test can see what was asked for. */
+export const commands = {
+	calls: [] as { command: string; args: readonly unknown[] }[],
+
+	async executeCommand(command: string, ...args: readonly unknown[]): Promise<unknown> {
+		commands.calls.push({ command, args });
+
+		return undefined;
+	},
+
+	registerCommand(): { dispose(): void } {
+		return { dispose: (): void => undefined };
+	},
+};
+
 // MARK: Emitters
 
 export class EventEmitter<T> {

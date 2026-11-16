@@ -25,23 +25,6 @@ interface ProposedModelInformation {
 
 export type ModelInformation = vscode.LanguageModelChatInformation & ProposedModelInformation;
 
-import { credentialsOf } from './credentials.ts';
-
-/**
- * The models to list for one call from the host.
- *
- * Credentials must come from this call, never from one remembered earlier. The host asks twice:
- * once with no configuration, for models belonging to no group, and again per configured group.
- * Answering the first call puts a row in the list that belongs to no group — it shows the vendor's
- * name and cannot be removed, because there is nothing to remove.
- */
-export function listableModels(
-	configuration: unknown,
-	models: readonly NeutralModel[],
-): ModelInformation[] {
-	return credentialsOf(configuration) === undefined ? [] : models.map(toModelInformation);
-}
-
 /** Project a catalog model onto the model picker entry. */
 export function toModelInformation(model: NeutralModel): ModelInformation {
 	const choices = reasoningChoices(model.reasoning);

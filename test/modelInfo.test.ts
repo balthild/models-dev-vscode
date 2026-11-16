@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 
 import type { NeutralModel } from '#/catalog/derive.ts';
 import { deriveReasoning } from '#/catalog/reasoning.ts';
-import { listableModels, toModelInformation } from '#/provider/modelInfo.ts';
+import { toModelInformation } from '#/provider/modelInfo.ts';
 
 function model(overrides: Partial<NeutralModel> = {}): NeutralModel {
 	return {
@@ -34,33 +34,6 @@ function reasoningProperty(information: ReturnType<typeof toModelInformation>) {
 
 	return schema?.properties?.reasoningEffort;
 }
-
-describe('listableModels', () => {
-	test('lists the models once the call carries a key', () => {
-		const listed = listableModels({ apiKey: 'sk-1' }, [model()]);
-
-		assert.equal(listed.length, 1);
-		assert.equal(listed[0].id, 'model');
-	});
-
-	test('lists nothing for a call with no configuration', () => {
-		// This is the host's group-less pass. Answering it would add a row that belongs to no
-		// group, which then cannot be removed.
-		assert.deepEqual(listableModels(undefined, [model()]), []);
-		assert.deepEqual(listableModels({}, [model()]), []);
-	});
-
-	test('lists nothing for a configuration without a key', () => {
-		assert.deepEqual(listableModels({ baseUrl: 'https://proxy.test/v1' }, [model()]), []);
-	});
-
-	test('decides from the call alone, not from any earlier one', () => {
-		// The regression: a remembered key must not leak into a later group-less call.
-		const models = [model()];
-		assert.equal(listableModels({ apiKey: 'sk-1' }, models).length, 1);
-		assert.deepEqual(listableModels(undefined, models), []);
-	});
-});
 
 describe('toModelInformation', () => {
 	test('carries the catalog identity and budget', () => {

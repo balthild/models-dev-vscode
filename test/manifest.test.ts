@@ -2,28 +2,32 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { describe, test } from 'node:test';
 
-import {
-	HARD_DISABLED_PROVIDERS,
-	isShippedProvider,
-	SHIPPED_PROVIDERS,
-} from '#/catalog/providers.ts';
-import type { Catalog } from '#/catalog/types.ts';
+import { HARD_DISABLED_PROVIDERS, selectableProviders } from '#/catalog/providers.ts';
+import type { Catalog, CatalogProvider } from '#/catalog/types.ts';
+import { COMMANDS, PROVIDER_SETTING, VENDOR_ID } from '#/ids.ts';
 
 const SNAPSHOT = new URL('../assets/catalog.snapshot.json', import.meta.url);
 
-/** The commands the extension registers, which the manifest has to declare. */
-const COMMANDS = ['modelsdev.updateData', 'modelsdev.showStatus'];
+interface Property {
+	readonly type?: string;
+	readonly secret?: boolean;
+	readonly title?: string;
+}
+
+interface Contribution {
+	readonly vendor: string;
+	readonly displayName: string;
+	readonly managementCommand?: string;
+	readonly configuration?: {
+		readonly required?: readonly string[];
+		readonly properties?: Record<string, Property>;
+	};
+}
 
 interface Manifest {
 	readonly activationEvents?: string[];
 	readonly contributes?: {
-		readonly languageModelChatProviders?: readonly {
-			readonly vendor: string;
-			readonly displayName: string;
-			readonly configuration?: {
-				readonly properties?: Record<string, { readonly secret?: boolean }>;
-			};
-		}[];
+		readonly languageModelChatProviders?: readonly Contribution[];
 		readonly commands?: readonly { readonly command: string }[];
 		readonly configuration?: { readonly properties?: Record<string, unknown> };
 	};
@@ -39,57 +43,44 @@ async function snapshot(): Promise<Catalog> {
 	return JSON.parse(await readFile(SNAPSHOT, 'utf8')) as Catalog;
 }
 
-describe('shipped providers', () => {
-	test('are listed once each', () => {
-		assert.deepEqual([...new Set(SHIPPED_PROVIDERS)], SHIPPED_PROVIDERS);
-	});
-
-	test('never include a provider VS Code serves itself', () => {
-		for (const id of SHIPPED_PROVIDERS) {
-			assert.equal(HARD_DISABLED_PROVIDERS.has(id), false, id);
-			assert.equal(isShippedProvider(id), true, id);
-		}
-	});
-});
-
-describe('snapshot', () => {
-	test('covers every shipped provider', async () => {
-		const catalog = await snapshot();
-
-		for (const id of SHIPPED_PROVIDERS) {
-			assert.notEqual(catalog[id], undefined, id);
-		}
-	});
-
-	test('leaves out the providers VS Code serves itself', async () => {
-		const catalog = await snapshot();
-
-		for (const id of HARD_DISABLED_PROVIDERS) {
-			assert.equal(catalog[id], undefined, id);
-		}
-	});
-});
+function vendors(loaded: Manifest): readonly Contribution[] {
+	return loaded.contributes?.languageModelChatProviders ?? [];
+}
 
 describe('manifest', () => {
-	test('declares exactly the shipped providers as vendors', async () => {
-		const declared = (await manifest()).contributes?.languageModelChatProviders ?? [];
+	test('registers the one vendor the extension serves', async () => {
+		const declared = vendors(await manifest());
 
-		assert.deepEqual(declared.map((entry) => entry.vendor).sort(), [...SHIPPED_PROVIDERS].sort());
+		assert.deepEqual(
+			declared.map((entry) => entry.vendor),
+			[VENDOR_ID],
+		);
+		assert.equal(declared[0]?.displayName, 'Models.dev');
 	});
 
-	test('asks the host for a secret API key per vendor', async () => {
-		const declared = (await manifest()).contributes?.languageModelChatProviders ?? [];
+	test('asks the host for a secret API key and a plain provider choice', async () => {
+		const properties = vendors(await manifest())[0]?.configuration?.properties ?? {};
 
-		for (const entry of declared) {
-			assert.equal(entry.configuration?.properties?.apiKey?.secret, true, entry.vendor);
-			assert.notEqual(entry.displayName, '', entry.vendor);
-		}
+		assert.equal(properties['apiKey']?.secret, true);
+		assert.equal(properties[PROVIDER_SETTING]?.secret, undefined);
+		assert.notEqual(properties['baseUrl'], undefined);
 	});
 
-	test('declares every command the extension registers', async () => {
-		const declared = ((await manifest()).contributes?.commands ?? []).map((entry) => entry.command);
+	test('requires the provider and the key, so the host wizard cannot store half a group', async () => {
+		assert.deepEqual(vendors(await manifest())[0]?.configuration?.required, [
+			PROVIDER_SETTING,
+			'apiKey',
+		]);
+	});
 
-		for (const command of COMMANDS) {
+	test('names a declared command as the vendor’s management command', async () => {
+		const loaded = await manifest();
+		const managementCommand = vendors(loaded)[0]?.managementCommand;
+
+		assert.equal(managementCommand, COMMANDS.addProvider);
+
+		const declared = (loaded.contributes?.commands ?? []).map((entry) => entry.command);
+		for (const command of Object.values(COMMANDS)) {
 			assert.equal(declared.includes(command), true, command);
 		}
 	});
@@ -102,3 +93,73 @@ describe('manifest', () => {
 		assert.deepEqual((await manifest()).activationEvents, ['onStartupFinished']);
 	});
 });
+
+describe('snapshot', () => {
+	test('holds exactly the providers the extension can serve', async () => {
+		const catalog = await snapshot();
+
+		assert.deepEqual(
+			Object.keys(catalog).sort(),
+			selectableProviders(catalog)
+				.map((provider) => provider.id)
+				.sort(),
+		);
+	});
+
+	test('leaves out the providers VS Code serves itself', async () => {
+		const catalog = await snapshot();
+
+		for (const id of HARD_DISABLED_PROVIDERS) {
+			assert.equal(catalog[id], undefined, id);
+		}
+	});
+});
+
+describe('selectableProviders', () => {
+	test('leaves out a provider the host serves itself, even when it has models', () => {
+		const catalog: Catalog = { openai: provider('OpenAI', { 'gpt-5': model() }) };
+
+		assert.deepEqual(selectableProviders(catalog), []);
+	});
+
+	test('leaves out a provider whose every model is unservable', () => {
+		const catalog: Catalog = {
+			exotic: provider('Exotic', { thing: model() }, '@ai-sdk/amazon-bedrock'),
+		};
+
+		assert.deepEqual(selectableProviders(catalog), []);
+	});
+
+	test('counts the servable models and orders providers by name', () => {
+		const catalog: Catalog = {
+			zeta: provider('Zeta', { a: model(), b: model() }),
+			alpha: provider('Alpha', { c: model() }),
+		};
+
+		assert.deepEqual(selectableProviders(catalog), [
+			{ id: 'alpha', name: 'Alpha', modelCount: 1, needsBaseUrl: false },
+			{ id: 'zeta', name: 'Zeta', modelCount: 2, needsBaseUrl: false },
+		]);
+	});
+
+	test('flags a template endpoint, which only works once the user fills it in', () => {
+		const catalog: Catalog = {
+			templated: provider('Templated', { a: model() }, undefined, 'https://${HOST}/v1'),
+		};
+
+		assert.equal(selectableProviders(catalog)[0]?.needsBaseUrl, true);
+	});
+});
+
+function provider(
+	name: string,
+	models: CatalogProvider['models'],
+	npm: string = '@ai-sdk/openai-compatible',
+	api: string = 'https://catalog.test/v1',
+): CatalogProvider {
+	return { id: name.toLowerCase(), name, npm, api, models };
+}
+
+function model(): CatalogProvider['models'][string] {
+	return { id: 'model', name: 'Model', limit: { context: 1_000, output: 100 } };
+}

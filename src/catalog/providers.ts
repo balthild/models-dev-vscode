@@ -1,6 +1,9 @@
+import { deriveProviderModels } from './derive.ts';
+import type { Catalog } from './types.ts';
+
 /**
- * Providers served by VS Code itself. Registering any of these would put a second entry with the
- * same name in Add Provider, so they are excluded unconditionally — a setting cannot turn them on.
+ * Providers served by VS Code itself. Serving any of these would put a second entry with the same
+ * name in Add Provider, so they are left out of the picker unconditionally.
  */
 export const HARD_DISABLED_PROVIDERS: ReadonlySet<string> = new Set([
 	'anthropic',
@@ -17,58 +20,43 @@ export const HARD_DISABLED_PROVIDERS: ReadonlySet<string> = new Set([
 	'xai',
 ]);
 
-/**
- * Providers compiled into `contributes.languageModelChatProviders`.
- *
- * VS Code reads vendor ids from the static manifest, so this list — not the live catalog — decides
- * what can appear in Add Provider: a new vendor needs a release, a new model under a listed vendor
- * does not.
- *
- * Being servable is necessary but not sufficient. The catalog offers far more providers this
- * extension could technically speak to — an AI SDK package it knows, a published base URL, at least
- * one usable model — but most of them are obscure relays carrying a model or two, and adding one
- * hands it the user's API key. Membership is therefore curated rather than computed.
- *
- * None of them serve models until the user adds one and supplies a key, which is deliberate:
- * listing a model that cannot be used reads as configured when it is not.
- */
-export const SHIPPED_PROVIDERS: readonly string[] = [
-	'302ai',
-	'ai21',
-	'alibaba',
-	'alibaba-cn',
-	'arcee',
-	'cline-pass',
-	'cloudflare-workers-ai',
-	'commandcode',
-	'databricks',
-	'deepseek',
-	'digitalocean',
-	'fireworks-ai',
-	'huggingface',
-	'inception',
-	'kilo',
-	'minimax',
-	'moonshotai',
-	'morph',
-	'nebius',
-	'novita-ai',
-	'nvidia',
-	'opencode',
-	'opencode-go',
-	'poe',
-	'requesty',
-	'siliconflow',
-	'siliconflow-cn',
-	'snowflake-cortex',
-	'stepfun',
-	'upstage',
-	'wandb',
-	'zai',
-	'zhipuai',
-];
+/** A catalog provider the extension can serve, in the shape the Add Provider picker needs. */
+export interface SelectableProvider {
+	readonly id: string;
+	readonly name: string;
+	readonly modelCount: number;
+	/** Whether the published endpoint is a template, so serving it needs a URL from the user. */
+	readonly needsBaseUrl: boolean;
+}
 
-/** Whether this extension ships a vendor for the given catalog provider. */
-export function isShippedProvider(id: string): boolean {
-	return SHIPPED_PROVIDERS.includes(id);
+/**
+ * Every catalog provider the extension can serve, ordered by display name.
+ *
+ * Servable means the extension speaks the provider's protocol, the catalog gives a reachable
+ * endpoint or one the user can fill in, and at least one model survives derivation. That is a
+ * technical test only; the picker offers all of it, because the user decides which of these they
+ * trust with a key.
+ */
+export function selectableProviders(catalog: Catalog): readonly SelectableProvider[] {
+	const selectable: SelectableProvider[] = [];
+
+	for (const [id, provider] of Object.entries(catalog)) {
+		if (HARD_DISABLED_PROVIDERS.has(id)) {
+			continue;
+		}
+
+		const models = deriveProviderModels(provider);
+		if (models.length === 0) {
+			continue;
+		}
+
+		selectable.push({
+			id,
+			name: provider.name,
+			modelCount: models.length,
+			needsBaseUrl: models.some((model) => model.baseUrl.includes('${')),
+		});
+	}
+
+	return selectable.sort((left, right) => left.name.localeCompare(right.name));
 }

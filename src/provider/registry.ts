@@ -2,23 +2,23 @@ import * as vscode from 'vscode';
 
 import type { NeutralModel } from '#/catalog/derive.ts';
 import { deriveProviderModels } from '#/catalog/derive.ts';
-import { SHIPPED_PROVIDERS } from '#/catalog/providers.ts';
 import type { CatalogStore } from '#/catalog/store.ts';
+import { VENDOR_ID } from '#/ids.ts';
 
 import { CatalogChatProvider } from './chatProvider.ts';
 
 /**
- * Owns one chat provider per shipped vendor.
+ * Serves the catalog to the host under the one vendor this extension registers.
  *
- * Vendors cannot appear at runtime — the host reads them from the static manifest — so every
- * shipped provider is registered up front. Which of them offer any models is decided per provider,
- * by whether the user has supplied a key.
+ * Vendors cannot appear at runtime — the host reads them from the static manifest — so a single
+ * vendor is what lets a provider models.dev adds later be usable without a release: the group the
+ * user creates names it.
  */
 export class ProviderRegistry implements vscode.Disposable {
 	private readonly store: CatalogStore;
 	private readonly log: vscode.LogOutputChannel;
-	private readonly providers = new Map<string, CatalogChatProvider>();
-	private readonly registrations: vscode.Disposable[] = [];
+	private provider: CatalogChatProvider | undefined;
+	private registration: vscode.Disposable | undefined;
 	private readonly cache = new Map<string, readonly NeutralModel[]>();
 
 	constructor(store: CatalogStore, log: vscode.LogOutputChannel) {
@@ -26,54 +26,51 @@ export class ProviderRegistry implements vscode.Disposable {
 		this.log = log;
 	}
 
-	/** Register every shipped vendor with the host. Call once, during activation. */
+	/** Register the vendor with the host. Call once, during activation. */
 	register(): void {
-		for (const id of SHIPPED_PROVIDERS) {
-			const provider = new CatalogChatProvider({
-				vendor: id,
-				models: () => this.modelsFor(id),
-				log: this.log,
-			});
-
-			this.providers.set(id, provider);
-			this.registrations.push(vscode.lm.registerLanguageModelChatProvider(id, provider));
-		}
+		this.provider = new CatalogChatProvider({
+			vendor: VENDOR_ID,
+			models: (providerId) => this.modelsFor(providerId),
+			log: this.log,
+		});
+		this.registration = vscode.lm.registerLanguageModelChatProvider(VENDOR_ID, this.provider);
 	}
 
 	/** Discard derived models and tell the host to re-read them. */
 	invalidate(): void {
 		this.cache.clear();
-
-		for (const provider of this.providers.values()) {
-			provider.notifyModelsChanged();
-		}
+		this.provider?.notifyModelsChanged();
 	}
 
 	dispose(): void {
-		for (const registration of this.registrations) {
-			registration.dispose();
-		}
-		for (const provider of this.providers.values()) {
-			provider.dispose();
-		}
+		this.registration?.dispose();
+		this.provider?.dispose();
 	}
 
 	/**
-	 * The models a vendor currently offers.
+	 * The models a catalog provider currently offers.
 	 *
 	 * Derived once per catalog and cached: the host asks for this far more often than the catalog
 	 * changes.
 	 */
-	private modelsFor(id: string): readonly NeutralModel[] {
-		const cached = this.cache.get(id);
+	private modelsFor(providerId: string): readonly NeutralModel[] {
+		const cached = this.cache.get(providerId);
 		if (cached !== undefined) {
 			return cached;
 		}
 
-		const catalogProvider = this.store.current()?.catalog[id];
-		const models = catalogProvider === undefined ? [] : deriveProviderModels(catalogProvider);
+		const provider = this.store.current()?.catalog[providerId];
+		if (provider === undefined) {
+			// A group whose provider was mistyped, or that the catalog dropped, lists nothing.
+			this.log.warn(`A group names ${providerId}, which the catalog does not offer.`);
+			this.cache.set(providerId, []);
 
-		this.cache.set(id, models);
+			return [];
+		}
+
+		const models = deriveProviderModels(provider);
+
+		this.cache.set(providerId, models);
 
 		return models;
 	}

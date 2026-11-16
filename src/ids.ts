@@ -1,0 +1,28 @@
+/**
+ * Names the host and the manifest both have to agree on.
+ *
+ * Kept out of `commands.ts` because the chat provider starts the add flow itself when the host asks
+ * it to configure the vendor, and going through `commands.ts` would make the two import each
+ * other.
+ */
+
+/** The one vendor this extension registers with the host. */
+export const VENDOR_ID = 'modelsdev';
+
+/** What that vendor is called in Add Provider and in the model picker. */
+export const VENDOR_NAME = 'Models.dev';
+
+/**
+ * Group setting naming the models.dev provider a group serves.
+ *
+ * The host hands a provider neither the group nor its name, so this setting is the only thing that
+ * says which upstream a listing belongs to.
+ */
+export const PROVIDER_SETTING = 'provider';
+
+/** Commands the extension registers, which the manifest has to declare. */
+export const COMMANDS = {
+	addProvider: 'modelsdev.addProvider',
+	updateData: 'modelsdev.updateData',
+	showStatus: 'modelsdev.showStatus',
+} as const;
