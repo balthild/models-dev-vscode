@@ -12,8 +12,7 @@
 	"publisher": "balthild",
 	"type": "module",
 	"imports": {
-		"#/*": "./src/*",
-		"#build/*": "./build/*"
+		"#/*": "./src/*"
 	},
 	"main": "./dist/extension.js",
 	"files": [

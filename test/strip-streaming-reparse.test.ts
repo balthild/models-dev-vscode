@@ -4,7 +4,8 @@ import { dirname, join } from 'node:path';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { stripStreamingReparse } from '#build/strip-streaming-reparse.ts';
+// oxlint-disable-next-line no-relative-parent-imports
+import { stripStreamingReparse } from '../build/strip-streaming-reparse.ts';
 
 const dist = dirname(fileURLToPath(import.meta.resolve('@earendil-works/pi-ai')));
 

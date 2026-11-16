@@ -9,7 +9,6 @@
 	"compilerOptions": {
 		"paths": {
 			"#/*": ["./src/*"],
-			"#build/*": ["./build/*"],
 		},
 		"lib": ["esnext"],
 		"types": ["node"],

@@ -1,6 +1,6 @@
 import { defineConfig } from 'rolldown';
 
-import { stripStreamingReparsePlugin } from '#build/strip-streaming-reparse.ts';
+import { stripStreamingReparsePlugin } from './build/strip-streaming-reparse.ts';
 
 // A single extension-host bundle. `vscode` is injected by the host at runtime,
 // so it must stay external.
