@@ -27,10 +27,14 @@ function warnings(): string[] {
 	return (vscode.window as unknown as { warnings: string[] }).warnings;
 }
 
-/** A registry over the given catalog, already registered with the host's stub. */
-function registryFor(loaded: Catalog): ProviderRegistry {
+/**
+ * A registry over the catalog the given reader returns, already registered with the host's stub.
+ *
+ * A reader rather than a catalog: a test that covers a refresh swaps the catalog under it.
+ */
+function registryFor(current: () => Catalog): ProviderRegistry {
 	const registry = new ProviderRegistry(
-		{ current: () => ({ catalog: loaded, origin: 'snapshot' }) },
+		{ current: () => ({ catalog: current(), origin: 'snapshot' }) },
 		silentLog(),
 	);
 	registry.register();
@@ -82,7 +86,7 @@ describe('unknown provider slugs', () => {
 	});
 
 	test('warn once for a slug the catalog does not have', () => {
-		const registry = registryFor(catalog());
+		const registry = registryFor(catalog);
 
 		assert.deepEqual(ask('deepsek'), []);
 		assert.equal(warnings().length, 1);
@@ -92,7 +96,7 @@ describe('unknown provider slugs', () => {
 	});
 
 	test('say nothing more the next time the same slug is resolved', () => {
-		const registry = registryFor(catalog());
+		const registry = registryFor(catalog);
 
 		ask('deepsek');
 		ask('deepsek');
@@ -102,7 +106,7 @@ describe('unknown provider slugs', () => {
 	});
 
 	test('warn again for a different slug, so a second mistake is not swallowed', () => {
-		const registry = registryFor(catalog());
+		const registry = registryFor(catalog);
 
 		ask('deepsek');
 		ask('opneai');
@@ -112,7 +116,7 @@ describe('unknown provider slugs', () => {
 	});
 
 	test('stay quiet across a refresh, which clears models but not what was reported', () => {
-		const registry = registryFor(catalog());
+		const registry = registryFor(catalog);
 
 		ask('deepsek');
 		registry.invalidate();
@@ -122,8 +126,47 @@ describe('unknown provider slugs', () => {
 		registry.dispose();
 	});
 
+	test('warn again once a refresh the user asked for has happened', () => {
+		const registry = registryFor(catalog);
+
+		ask('deepsek');
+		registry.invalidateAfterUserRefresh();
+		ask('deepsek');
+
+		assert.equal(warnings().length, 2);
+		registry.dispose();
+	});
+
+	test('warn again for every unknown slug at once, not just the last one resolved', () => {
+		const registry = registryFor(catalog);
+
+		ask('deepsek');
+		ask('opneai');
+		registry.invalidateAfterUserRefresh();
+		ask('deepsek');
+		ask('opneai');
+
+		assert.equal(warnings().length, 4);
+		registry.dispose();
+	});
+
+	test('say nothing about a slug the user’s refresh fixed', () => {
+		let loaded = catalog();
+		const registry = registryFor(() => loaded);
+
+		ask('deepsek');
+
+		// The refreshed catalog now has it, which is the outcome the warning was asking for.
+		loaded = { ...catalog(), deepsek: provider() };
+		registry.invalidateAfterUserRefresh();
+		ask('deepsek');
+
+		assert.equal(warnings().length, 1);
+		registry.dispose();
+	});
+
 	test('stay quiet for a slug the catalog does have', () => {
-		const registry = registryFor(catalog());
+		const registry = registryFor(catalog);
 
 		assert.equal(ask('deepseek').length, 1);
 		assert.deepEqual(warnings(), []);

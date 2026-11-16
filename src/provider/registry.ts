@@ -24,8 +24,8 @@ export class ProviderRegistry implements vscode.Disposable {
 	/**
 	 * Slugs already reported as unknown.
 	 *
-	 * Separate from {@link cache} because that one is cleared on every catalog refresh, and a group
-	 * with a typo would then complain again each time the catalog updates.
+	 * Kept apart from {@link cache}, which every refresh clears: a group left unfixed would otherwise
+	 * complain again each time the catalog downloads on its own.
 	 */
 	private readonly reportedUnknown = new Set<string>();
 
@@ -48,6 +48,17 @@ export class ProviderRegistry implements vscode.Disposable {
 	invalidate(): void {
 		this.cache.clear();
 		this.provider?.notifyModelsChanged();
+	}
+
+	/**
+	 * The same, for a refresh the user asked for.
+	 *
+	 * Such a refresh is also the moment a wrong provider id is worth pointing out again, so the
+	 * record of what was reported goes with it.
+	 */
+	invalidateAfterUserRefresh(): void {
+		this.reportedUnknown.clear();
+		this.invalidate();
 	}
 
 	dispose(): void {

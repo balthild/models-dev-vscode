@@ -157,7 +157,8 @@ async function updateData({ store, registry, log }: CommandContext): Promise<voi
 		async () => {
 			try {
 				const state = await store.refresh();
-				registry.invalidate();
+				// Asked for, so a group still naming an unknown provider gets pointed out again.
+				registry.invalidateAfterUserRefresh();
 
 				const summary = describe(state.catalog);
 				log.info(`Catalog updated from models.dev: ${summary}`);
