@@ -1,7 +1,6 @@
 {
 	"include": [
 		"./*.config.ts",
-		"./build/**/*.ts",
 		"./src/**/*.ts",
 		"./test/**/*.ts",
 		"./scripts/**/*.ts",
