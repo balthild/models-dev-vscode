@@ -15,13 +15,21 @@ import { CatalogChatProvider } from './chatProvider.ts';
  * user creates names it.
  */
 export class ProviderRegistry implements vscode.Disposable {
-	private readonly store: CatalogStore;
+	/** Only reads the catalog, so that is all it asks the store for. */
+	private readonly store: Pick<CatalogStore, 'current'>;
 	private readonly log: vscode.LogOutputChannel;
 	private provider: CatalogChatProvider | undefined;
 	private registration: vscode.Disposable | undefined;
 	private readonly cache = new Map<string, readonly NeutralModel[]>();
+	/**
+	 * Slugs already reported as unknown.
+	 *
+	 * Separate from {@link cache} because that one is cleared on every catalog refresh, and a group
+	 * with a typo would then complain again each time the catalog updates.
+	 */
+	private readonly reportedUnknown = new Set<string>();
 
-	constructor(store: CatalogStore, log: vscode.LogOutputChannel) {
+	constructor(store: Pick<CatalogStore, 'current'>, log: vscode.LogOutputChannel) {
 		this.store = store;
 		this.log = log;
 	}
@@ -61,8 +69,7 @@ export class ProviderRegistry implements vscode.Disposable {
 
 		const provider = this.store.current()?.catalog[providerId];
 		if (provider === undefined) {
-			// A group whose provider was mistyped, or that the catalog dropped, lists nothing.
-			this.log.warn(`A group names ${providerId}, which the catalog does not offer.`);
+			this.reportUnknown(providerId);
 			this.cache.set(providerId, []);
 
 			return [];
@@ -73,5 +80,25 @@ export class ProviderRegistry implements vscode.Disposable {
 		this.cache.set(providerId, models);
 
 		return models;
+	}
+
+	/**
+	 * Say that a group names a provider the catalog does not offer.
+	 *
+	 * Once per slug: the host resolves models on every change, so a group left unfixed would
+	 * otherwise repeat the warning until it is removed. The catalog may also simply predate the
+	 * provider, which is why the message names the fix rather than calling it a mistake.
+	 */
+	private reportUnknown(providerId: string): void {
+		if (this.reportedUnknown.has(providerId)) {
+			return;
+		}
+
+		this.reportedUnknown.add(providerId);
+		this.log.warn(`A group names ${providerId}, which the catalog does not offer.`);
+
+		void vscode.window.showWarningMessage(
+			`Models.dev has no provider named "${providerId}". Check the id, or run Update Model Data if models.dev added it recently.`,
+		);
 	}
 }

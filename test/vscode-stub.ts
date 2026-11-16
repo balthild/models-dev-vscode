@@ -94,6 +94,28 @@ export const commands = {
 	},
 };
 
+/** What the extension put in the corner of the screen, recorded the same way. */
+export const window = {
+	warnings: [] as string[],
+
+	async showWarningMessage(message: string): Promise<undefined> {
+		window.warnings.push(message);
+
+		return undefined;
+	},
+};
+
+/** The host's model provider registry, holding whichever provider was registered last. */
+export const lm = {
+	providers: new Map<string, unknown>(),
+
+	registerLanguageModelChatProvider(vendor: string, provider: unknown): { dispose(): void } {
+		lm.providers.set(vendor, provider);
+
+		return { dispose: (): void => void lm.providers.delete(vendor) };
+	},
+};
+
 // MARK: Emitters
 
 export class EventEmitter<T> {
