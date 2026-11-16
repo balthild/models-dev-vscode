@@ -162,6 +162,23 @@
 				}
 			},
 			{
+				"vendor": "commandcode",
+				"displayName": "CommandCode",
+				"configuration": {
+					"properties": {
+						"apiKey": {
+							"type": "string",
+							"secret": true,
+							"description": "API key for CommandCode. Stored in VS Code's secret storage."
+						},
+						"baseUrl": {
+							"type": "string",
+							"description": "Endpoint to use instead of the one models.dev publishes for CommandCode. Leave empty for the default."
+						}
+					}
+				}
+			},
+			{
 				"vendor": "databricks",
 				"displayName": "Databricks",
 				"configuration": {

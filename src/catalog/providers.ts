@@ -21,9 +21,13 @@ export const HARD_DISABLED_PROVIDERS: ReadonlySet<string> = new Set([
  * Providers compiled into `contributes.languageModelChatProviders`.
  *
  * VS Code reads vendor ids from the static manifest, so this list — not the live catalog — decides
- * what can appear in Add Provider. Membership is limited to providers the catalog gives a base URL
- * for, which in practice means the ones served over an OpenAI-compatible endpoint: models.dev omits
- * `api` for providers whose AI SDK package hard-codes it, and those cannot be reached from here.
+ * what can appear in Add Provider: a new vendor needs a release, a new model under a listed vendor
+ * does not.
+ *
+ * Being servable is necessary but not sufficient. The catalog offers far more providers this
+ * extension could technically speak to — an AI SDK package it knows, a published base URL, at least
+ * one usable model — but most of them are obscure relays carrying a model or two, and adding one
+ * hands it the user's API key. Membership is therefore curated rather than computed.
  *
  * None of them serve models until the user adds one and supplies a key, which is deliberate:
  * listing a model that cannot be used reads as configured when it is not.
@@ -36,6 +40,7 @@ export const SHIPPED_PROVIDERS: readonly string[] = [
 	'arcee',
 	'cline-pass',
 	'cloudflare-workers-ai',
+	'commandcode',
 	'databricks',
 	'deepseek',
 	'digitalocean',
