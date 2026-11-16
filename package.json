@@ -19,7 +19,8 @@
 	"files": [
 		"dist",
 		"assets",
-		"README.md"
+		"README.md",
+		"LICENSE"
 	],
 	"scripts": {
 		"build": "rolldown -c",
