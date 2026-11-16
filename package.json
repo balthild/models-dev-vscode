@@ -1,7 +1,7 @@
 {
 	"name": "models-dev-vscode",
 	"displayName": "Models.dev",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"private": true,
 	"description": "Models.dev as copilot model providers",
 	"categories": [
